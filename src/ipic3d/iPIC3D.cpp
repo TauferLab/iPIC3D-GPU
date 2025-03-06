@@ -25,6 +25,8 @@
 #include "debug.h"
 #include <stdio.h>
 
+#include "ipic3d_cali.h"
+
 #include "dataAnalysis.cuh"
 
 using namespace iPic3D;
