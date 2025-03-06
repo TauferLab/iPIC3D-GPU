@@ -41,6 +41,8 @@
 #include "OutputWrapperFPP.h"
 #endif
 
+#include "ipic3d_cali.h"
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -570,6 +572,7 @@ int c_Solver::deInitCUDA(){
 
 
 void c_Solver::CalculateMoments(bool isInit) {
+  CALI_CXX_MARK_FUNCTION;
 
   timeTasks_set_main_task(TimeTasks::MOMENTS);
 
@@ -677,6 +680,7 @@ void c_Solver::CalculateMoments(bool isInit) {
 
 //! MAXWELL SOLVER for Efield
 void c_Solver::CalculateField(int cycle) {
+  CALI_CXX_MARK_FUNCTION;
   timeTasks_set_main_task(TimeTasks::FIELDS);
 
   // calculate the E field
@@ -753,6 +757,7 @@ int c_Solver::cudaLauncherAsync(const int species){
 
 //! MAXWELL SOLVER for Bfield (assuming Efield has already been calculated)
 void c_Solver::CalculateB() {
+  CALI_CXX_MARK_FUNCTION;
   timeTasks_set_main_task(TimeTasks::FIELDS);
   // calculate the B field
   EMf->calculateB();
@@ -763,6 +768,7 @@ void c_Solver::CalculateB() {
 /*  -------------- */
 bool c_Solver::ParticlesMover()
 {
+  CALI_CXX_MARK_FUNCTION;
   // move all species of particles
   {
     timeTasks_set_main_task(TimeTasks::PARTICLES);
@@ -809,11 +815,15 @@ bool c_Solver::ParticlesMover()
     //cudaErrChk(cudaMemcpyAsync(fieldForPclCUDAPtr, (void*)&(EMf->get_fieldForPcls().get(0,0,0,0)), gridSize*8*sizeof(cudaCommonType), cudaMemcpyDefault, streams[0]));
     cudaErrChk(cudaMemcpyAsync(fieldForPclCUDAPtr, fieldForPclHostPtr, (grid->getNZN() * (grid->getNYN() - 1) * (grid->getNXN() - 1)) * 24 * sizeof(cudaCommonType), cudaMemcpyDefault, streams[0]));
     cudaErrChk(cudaEventRecord(event0, streams[0]));
+    CALI_MARK_BEGIN("move_particles_on_gpu");
+    CALI_MARK_BEGIN("launch_gpu_launcher_threads");
     std::future<int> results[ns];
     for(int i=0; i<ns; i++){
       results[i] = threadPoolPtr->enqueue(&c_Solver::cudaLauncherAsync, this, i);
     }
+    CALI_MARK_END("launch_gpu_launcher_threads");
 
+    CALI_MARK_BEGIN("send_particles");
     for (int i = 0; i < ns; i++){ //  it can be better
       auto x = results[i].get();
       stayedParticle[i] = pclsArrayHostPtr[i]->getNOP() - x;
@@ -821,12 +831,16 @@ bool c_Solver::ParticlesMover()
       // part[i].openbc_particles_outflow();
       auto a = exchangePart[i].separate_and_send_particles();
     }
+    CALI_MARK_END("send_particles");
+    CALI_MARK_END("move_particles_on_gpu");
 #endif
 
+    CALI_MARK_BEGIN("recommunication_particles");
     for (int i = 0; i < ns; i++)  // communicate each species
     {
       exchangePart[i].recommunicate_particles_until_done(1);
     }
+    CALI_MARK_END("recommunication_particles");
   }
 
   /* -------------------------------------- */

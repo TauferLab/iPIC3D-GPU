@@ -30,9 +30,12 @@
 #include "EMfields3D.h"
 #include "VCtopology3D.h"
 
+#include "ipic3d_cali.h"
+
 void GMRES(FIELD_IMAGE FunctionImage, double *xkrylov, int xkrylovlen,
   const double *b, int m, int max_iter, double tol, Field * field)
 {
+  CALI_CXX_MARK_FUNCTION;
   if (m > xkrylovlen) {
     // m need not be the same for all processes,
     // we cannot restrict this test to the main process,

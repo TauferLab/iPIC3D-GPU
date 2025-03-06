@@ -25,6 +25,8 @@
 #include "MPIdata.h"
 #include "ompdefs.h" // for omp_get_max_threads
 
+#include "ipic3d_cali.h"
+
 // code to check that init() is called before instance()
 //
 // no need for this to have more than file scope
@@ -58,6 +60,8 @@ void MPIdata::init(int *argc, char ***argv) {
  #else // NO_MPI
   /* Initialize the MPI API */
   MPI_Init(argc, argv);
+  
+  CALI_MARK_BEGIN("MPIdata::init");
 
   MPI_Comm_dup(MPI_COMM_WORLD, &PIC_COMM);
   MPI_Comm_rank(PIC_COMM, &rank);
@@ -66,6 +70,7 @@ void MPIdata::init(int *argc, char ***argv) {
  #endif // NO_MPI
 
   MPIdata_is_initialized = true;
+  CALI_MARK_END("MPIdata::init");
 }
 
 void MPIdata::exit(int code) {

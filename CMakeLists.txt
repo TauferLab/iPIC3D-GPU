@@ -46,6 +46,7 @@ option(CUDA_ON "Enable CUDA" ON) # It should always be ON, even for HIP AMD
 option(MOMENT_CUDA_ON "Run Moment on CUDA" ON)
 option(MOVER_CUDA_ON "Run Mover on CUDA" ON)
 option(HIP_ON "Use HIP" OFF) # Set it to OFF if you want to use CUDA
+option(USE_CALIPER "Use Caliper performance monitoring" OFF)
 
 
 option(BENCH_MARK "Print tasks time" OFF)
@@ -111,6 +112,12 @@ if (USE_HDF5)
     set(HDF5_C_HL_TARGET hdf5::hdf5_hl)
   endif()
 endif()
+
+if (USE_CALIPER)
+  find_package(caliper REQUIRED)
+  find_package(adiak REQUIRED)
+  add_compile_definitions("HAVE_CALIPER=1")
+endif ()
 
 # Find MPI and OpenMP
 find_package(MPI REQUIRED COMPONENTS CXX)
@@ -212,6 +219,10 @@ if (USE_CATALYST)
     list(APPEND linkLibraries iPICAdaptor)
 endif()
 
+if (USE_CALIPER)
+  target_link_libraries(iPIC3Dlib PUBLIC caliper adiak::adiak)
+endif()
+
 target_link_libraries(
     iPIC3Dlib
     PUBLIC ${linkLibraries}
@@ -274,6 +285,10 @@ target_link_libraries(
   iPIC3D
   iPIC3Dlib
   )
+  
+if (USE_CALIPER)
+  target_link_libraries(iPIC3D caliper adiak::adiak)
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
