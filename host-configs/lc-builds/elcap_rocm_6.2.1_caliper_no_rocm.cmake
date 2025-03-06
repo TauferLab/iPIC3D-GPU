@@ -40,3 +40,9 @@ set(
     CACHE STRING
     "Directory where CMake will look for caliper-config.cmake"
 )
+set(
+    adiak_DIR
+    "/usr/workspace/ipic3d/caliper-installs/spack_env/.spack-env/view/lib/cmake/adiak"
+    CACHE STRING
+    "Directory where CMake will look for adiak-config.cmake"
+)
