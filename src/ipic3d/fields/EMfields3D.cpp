@@ -42,6 +42,8 @@
 #ifndef NO_HDF5
 #endif
 
+#include "ipic3d_cali.h"
+
 #include "cudaTypeDef.cuh"
 
 #include <iostream>
@@ -2096,6 +2098,7 @@ void phys2solver(double *vectSolver, const arr3_double vectPhys1, const arr3_dou
 /*! Calculate Electric field with the implicit solver: the Maxwell solver method is called here */
 void EMfields3D::calculateE(int cycle)
 {
+  CALI_CXX_MARK_SCOPE("calculate_electric_field");
   const Collective *col = &get_col();
   const VirtualTopology3D * vct = &get_vct();
   const Grid *grid = &get_grid();
@@ -2346,6 +2349,7 @@ void EMfields3D::MaxwellSource(double *bkrylov)
 // 
 void EMfields3D::MaxwellImage(double *im, double* vector)
 {
+  CALI_CXX_MARK_FUNCTION;
   const Collective *col = &get_col();
   const VirtualTopology3D *vct = &get_vct();
   const Grid *grid = &get_grid();
@@ -2449,6 +2453,7 @@ void EMfields3D::PIdot(arr3_double PIdotX, arr3_double PIdotY, arr3_double PIdot
 void EMfields3D::MUdot(arr3_double MUdotX, arr3_double MUdotY, arr3_double MUdotZ,
   const_arr3_double vectX, const_arr3_double vectY, const_arr3_double vectZ)
 {
+  CALI_CXX_MARK_FUNCTION;
   const Grid *grid = &get_grid();
   double beta, edotb, omcx, omcy, omcz, denom;
   #pragma omp parallel for collapse(2)

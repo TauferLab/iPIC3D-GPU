@@ -41,6 +41,8 @@
 #include "OutputWrapperFPP.h"
 #endif
 
+#include "ipic3d_cali.h"
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -564,6 +566,7 @@ int c_Solver::deInitCUDA(){
 
 
 void c_Solver::CalculateMoments() {
+  CALI_CXX_MARK_FUNCTION;
 
   // timeTasks_set_main_task(TimeTasks::MOMENTS);
 
@@ -596,6 +599,7 @@ void c_Solver::CalculateMoments() {
 
 //! MAXWELL SOLVER for Efield
 void c_Solver::CalculateField(int cycle) {
+  CALI_CXX_MARK_FUNCTION;
   timeTasks_set_main_task(TimeTasks::FIELDS);
 
   // calculate the E field
@@ -674,6 +678,7 @@ int c_Solver::cudaLauncherAsync(const int species){
 
 bool c_Solver::ParticlesMoverMomentAsync()
 {
+  CALI_CXX_MARK_FUNCTION;
   // move all species of particles
   
   timeTasks_set_main_task(TimeTasks::PARTICLES);
@@ -689,9 +694,11 @@ bool c_Solver::ParticlesMoverMomentAsync()
 
 
 
+  CALI_MARK_BEGIN("launch_gpu_launcher_threads");
   for(int i=0; i<ns; i++){
     exitingResults[i] = threadPoolPtr->enqueue(&c_Solver::cudaLauncherAsync, this, i);
   }
+  CALI_MARK_END("launch_gpu_launcher_threads");
   
 
   return (false);
@@ -699,7 +706,9 @@ bool c_Solver::ParticlesMoverMomentAsync()
 
 bool c_Solver::MoverAwaitAndPclExchange()
 {
+  CALI_CXX_MARK_FUNCTION;
 
+  CALI_MARK_BEGIN("send_and_recommunicate_particles");
   for (int i = 0; i < ns; i++){ 
     auto x = exitingResults[i].get();
     stayedParticle[i] = pclsArrayHostPtr[i]->getNOP() - x;
@@ -711,6 +720,7 @@ bool c_Solver::MoverAwaitAndPclExchange()
     auto a = part[i].separate_and_send_particles();
     part[i].recommunicate_particles_until_done(1);
   }
+  CALI_MARK_END("send_and_recommunicate_particles");
 
   /* -------------------------------------- */
   /* Repopulate the buffer zone at the edge */
@@ -780,6 +790,7 @@ bool c_Solver::MoverAwaitAndPclExchange()
   /* --------------------------------------- */
   /* Test Particles mover 					 */
   /* --------------------------------------- */
+  CALI_MARK_BEGIN("move_test_particles");
   for (int i = 0; i < nstestpart; i++)  // move each species
   {
 	switch(Parameters::get_MOVER_TYPE())
@@ -811,12 +822,14 @@ bool c_Solver::MoverAwaitAndPclExchange()
   {
 	  testpart[i].recommunicate_particles_until_done(1);
   }
+  CALI_MARK_END("move_test_particles");
 
   return (false);
 }
 
 //! MAXWELL SOLVER for Bfield (assuming Efield has already been calculated)
 void c_Solver::CalculateB() {
+  CALI_CXX_MARK_FUNCTION;
   timeTasks_set_main_task(TimeTasks::FIELDS);
   // calculate the B field
   EMf->calculateB();

@@ -25,15 +25,36 @@
 #include "TimeTasks.h"
 #include <stdio.h>
 
+#include "ipic3d_cali.h"
+
 #include "dataAnalysis.cuh"
 
 using namespace iPic3D;
+
+#if HAVE_CALIPER
+#include <adiak.hpp>
+
+void set_adiak_metadata() {
+  adiak::workdir();
+  adiak::clustername();
+  adiak::hostlist();
+  adiak::numhosts();
+  adiak::walltime();
+  adiak::systime();
+  adiak::cputime();
+  adiak::jobsize();
+  adiak::mpi_version();
+  adiak::mpi_library();
+  adiak::mpi_library_version();
+}
+#endif
 
 int main(int argc, char **argv) {
 
  MPIdata::init(&argc, &argv);
  {
 
+  CALI_MARK_BEGIN("main");
   iPic3D::c_Solver KCode;
   KCode.Init(argc, argv); //! load param from file, init the grid, fields
   dataAnalysis::dataAnalysisPipeline DA(KCode); // has to be created after KCode.Init()
@@ -41,16 +62,20 @@ int main(int argc, char **argv) {
 
   timeTasks.resetCycle(); //reset timer
   KCode.CalculateMoments();
+  CALI_MARK_LOOP_BEGIN(ipic3d_main_loop, "ipic3d_main_loop");
   for (int i = KCode.FirstCycle(); i < KCode.LastCycle(); i++) {
+    CALI_MARK_ITERATION_BEGIN(ipic3d_main_loop, i);
 
     if (KCode.get_myrank() == 0)
       printf(" ======= Cycle %d ======= \n",i);
 
     timeTasks.resetCycle();
 
+    CALI_MARK_BEGIN("em_field_and_gmm");
     DA.startAnalysis(i);
     KCode.CalculateField(i); // E field
     DA.waitForAnalysis();
+    CALI_MARK_END("em_field_and_gmm");
 
     KCode.ParticlesMoverMomentAsync(); // launch Mover and Moment kernels
     // some spare CPU cycles
@@ -66,7 +91,9 @@ int main(int argc, char **argv) {
 #ifdef LOG_TASKS_TOTAL_TIME
     timeTasks.print_cycle_times(i); // print out total time for all tasks
 #endif
+    CALI_MARK_ITERATION_END(ipic3d_main_loop);
   }
+  CALI_MARK_LOOP_END(ipic3d_main_loop);
 
 #ifdef LOG_TASKS_TOTAL_TIME
     timeTasks.print_tasks_total_times();
@@ -75,6 +102,7 @@ int main(int argc, char **argv) {
   DA.writeGMMResults();
 
   KCode.Finalize();
+  CALI_MARK_END("main");
  }
  // close MPI
  MPIdata::instance().finalize_mpi();
