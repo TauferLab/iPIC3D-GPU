@@ -12,6 +12,8 @@
 #include "iPic3D.h"
 #include "VCtopology3D.h"
 
+#include "ipic3d_cali.h"
+
 #include "adios2.h"
 
 namespace iPic3D {
@@ -168,6 +170,7 @@ adios2::Variable<T> _variableHelper(adios2::IO &io, const std::string &name, con
 */
 
 void _procTopology(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_proc_topology");
     int coord[3] = {vct->getCoordinates(0), vct->getCoordinates(1), vct->getCoordinates(2)};
     auto varCoord = _variableHelper<int>(io, "cartesian_coord", {3}, {0}, {3});
     engine.Put<int>(varCoord, coord, adios2::Mode::Sync);
@@ -198,10 +201,12 @@ void _procTopology(adios2::IO &io, adios2::Engine &engine){
     int zright = vct->getZright_neighbor();
     auto varZright = _variableHelper<int>(io, "Zright_neighbor");
     engine.Put<int>(varZright, zright, adios2::Mode::Sync);
+    CALI_MARK_END("adios_put_proc_topology");
 }
 
 // Note that the ghost cells are also included in the output
 void _E(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_e_deferred");
     const adios2::Dims shape = {static_cast<unsigned long>(grid->getNXN()), static_cast<unsigned long>(grid->getNYN()), static_cast<unsigned long>(grid->getNZN())};
 
     auto ex = _variableHelper<cudaCommonType>(io, "Ex", shape, {0, 0, 0}, shape);
@@ -211,9 +216,11 @@ void _E(adios2::IO &io, adios2::Engine &engine){
     engine.Put<cudaCommonType>(ex, EMf->getEx().get_arr(), adios2::Mode::Deferred);
     engine.Put<cudaCommonType>(ey, EMf->getEy().get_arr(), adios2::Mode::Deferred);
     engine.Put<cudaCommonType>(ez, EMf->getEz().get_arr(), adios2::Mode::Deferred);
+    CALI_MARK_END("adios_put_e_deferred");
 }
 
 void _B(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_b_deferred");
     const adios2::Dims shape = {static_cast<unsigned long>(grid->getNXN()), static_cast<unsigned long>(grid->getNYN()), static_cast<unsigned long>(grid->getNZN())};
 
     auto bx = _variableHelper<cudaCommonType>(io, "Bx", shape, {0, 0, 0}, shape);
@@ -223,18 +230,22 @@ void _B(adios2::IO &io, adios2::Engine &engine){
     engine.Put<cudaCommonType>(bx, EMf->getBxTot().get_arr(), adios2::Mode::Deferred);
     engine.Put<cudaCommonType>(by, EMf->getByTot().get_arr(), adios2::Mode::Deferred);
     engine.Put<cudaCommonType>(bz, EMf->getBzTot().get_arr(), adios2::Mode::Deferred);
+    CALI_MARK_END("adios_put_b_deferred");
 }
 
 void _rhos(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_rhos_deferred");
     const adios2::Dims shape = {static_cast<unsigned long>(grid->getNXN()), static_cast<unsigned long>(grid->getNYN()), static_cast<unsigned long>(grid->getNZN())};
 
     for (int i = 0; i < ns; i++) {
         auto var = _variableHelper<cudaCommonType>(io, "rhosSpecies" + std::to_string(i), shape, {0, 0, 0}, shape);
         engine.Put<cudaCommonType>(var, (cudaCommonType*)(EMf->getRHOns()[i]), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_rhos_deferred");
 }
 
 void _Js(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_js_deferred");
     const adios2::Dims shape = {static_cast<unsigned long>(grid->getNXN()), static_cast<unsigned long>(grid->getNYN()), static_cast<unsigned long>(grid->getNZN())};
 
     for (int i = 0; i < ns; i++) {
@@ -246,9 +257,11 @@ void _Js(adios2::IO &io, adios2::Engine &engine){
         engine.Put<cudaCommonType>(jy, (cudaCommonType*)(EMf->getJys()[i]), adios2::Mode::Deferred);
         engine.Put<cudaCommonType>(jz, (cudaCommonType*)(EMf->getJzs()[i]), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_js_deferred");
 }
 
 void _pressure(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_pressure_deferred");
     const adios2::Dims shape = {static_cast<unsigned long>(grid->getNXN()), static_cast<unsigned long>(grid->getNYN()), static_cast<unsigned long>(grid->getNZN())};
 
     for (int i = 0; i < ns; i++) {
@@ -267,6 +280,7 @@ void _pressure(adios2::IO &io, adios2::Engine &engine){
         engine.Put<cudaCommonType>(pzz, (cudaCommonType*)(EMf->getpZZsn()[i]), adios2::Mode::Deferred);
  
     }
+    CALI_MARK_END("adios_put_pressure_deferred");
 }
 
 
@@ -277,6 +291,7 @@ void _pressure(adios2::IO &io, adios2::Engine &engine){
     ID -> particle ID (note: TrackParticleID has to be set true in Collective)
 */
 void _particlePosition(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_particle_position_deferred");
     for (int i = 0; i < ns; i++) {
         const unsigned long sizeNOP = static_cast<unsigned long>(part[i].getNOP());
 
@@ -288,9 +303,11 @@ void _particlePosition(adios2::IO &io, adios2::Engine &engine){
         engine.Put<cudaCommonType>(y, part[i].getYall(), adios2::Mode::Deferred);
         engine.Put<cudaCommonType>(z, part[i].getZall(), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_particle_position_deferred");
 }
 
 void _particleVelocity(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_particle_velocity_deferred");
     for (int i = 0; i < ns; i++) {
         const unsigned long sizeNOP = static_cast<unsigned long>(part[i].getNOP());
 
@@ -302,9 +319,11 @@ void _particleVelocity(adios2::IO &io, adios2::Engine &engine){
         engine.Put<cudaCommonType>(v, part[i].getVall(), adios2::Mode::Deferred);
         engine.Put<cudaCommonType>(w, part[i].getWall(), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_particle_velocity_deferred");
 }
 
 void _particleCharge(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_particle_charge_deferred");
     for (int i = 0; i < ns; i++) {
         const unsigned long sizeNOP = static_cast<unsigned long>(part[i].getNOP());
 
@@ -312,9 +331,11 @@ void _particleCharge(adios2::IO &io, adios2::Engine &engine){
 
         engine.Put<cudaCommonType>(var, part[i].getQall(), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_particle_charge_deferred");
 }
 
 void _particleID(adios2::IO &io, adios2::Engine &engine){
+    CALI_MARK_BEGIN("adios_put_particle_id_deferred");
     for (int i = 0; i < ns; i++) {
         const unsigned long sizeNOP = static_cast<unsigned long>(part[i].getNOP());
 
@@ -322,6 +343,7 @@ void _particleID(adios2::IO &io, adios2::Engine &engine){
 
         engine.Put<cudaCommonType>(var, part[i].getParticleIDall(), adios2::Mode::Deferred);
     }
+    CALI_MARK_END("adios_put_particle_id_deferred");
 }
 
 // restart, all of the above

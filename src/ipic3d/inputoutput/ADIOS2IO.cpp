@@ -11,9 +11,16 @@
 #include "mpi.h"
 #include "adios2.h"
 
+#include "ipic3d_cali.h"
+
 #include "MPIdata.h"
 
 #include <chrono>
+
+#define CALI_MARK_ADIOS_OPEN_BEGIN CALI_MARK_BEGIN("adios_open_file")
+#define CALI_MARK_ADIOS_OPEN_END CALI_MARK_END("adios_open_file")
+#define CALI_MARK_ADIOS_CLOSE_BEGIN CALI_MARK_BEGIN("adios_close_file")
+#define CALI_MARK_ADIOS_CLOSE_END CALI_MARK_END("adios_close_file")
 
 namespace ADIOS2IO {
 
@@ -22,6 +29,7 @@ using namespace std;
 
 void ADIOS2Manager::initOutputFiles(string fieldTag, string particleTag, int sample, iPic3D::c_Solver& KCode) {
 
+    CALI_CXX_MARK_SCOPE("adios_mgr_init_output_files");
     if (open) {
         closeOutputFiles();
     }
@@ -51,18 +59,24 @@ void ADIOS2Manager::initOutputFiles(string fieldTag, string particleTag, int sam
 
     // open files
     if (!fieldTag.empty()) { throw runtime_error("Field output is not supported yet"); 
+        CALI_CXX_MARK_SCOPE("adios_mgr_init_field_output_file");
         this->ioField = adios.DeclareIO("FieldOutput");
         this->ioField.SetEngine("BP5");
         auto filePath = saveDirName + "/field_" + to_string(cartisianRank) + ".bp";
+        CALI_MARK_ADIOS_OPEN_BEGIN;
         engineField = ioField.Open(filePath, adios2::Mode::Write);
+        CALI_MARK_ADIOS_OPEN_END;
 
     }
 
     if (!particleTag.empty()) {
+        CALI_CXX_MARK_SCOPE("adios_mgr_init_particle_output_file");
         this->ioParticle = adios.DeclareIO("ParticleOutput");
         this->ioParticle.SetEngine("BP5");
         auto filePath = saveDirName + "/particle_" + to_string(cartisianRank) + ".bp";
+        CALI_MARK_ADIOS_OPEN_BEGIN;
         engineParticle = ioParticle.Open(filePath, col->getRestart_status() == 0 ? adios2::Mode::Write : adios2::Mode::Append, MPI_COMM_SELF);
+        CALI_MARK_ADIOS_OPEN_END;
 
         // parse the tag and prepae the map
         particleTag.erase(remove(particleTag.begin(), particleTag.end(), ' '), particleTag.end());
@@ -88,10 +102,13 @@ void ADIOS2Manager::initOutputFiles(string fieldTag, string particleTag, int sam
 
     if (!restartTag.empty()) { 
         
+        CALI_CXX_MARK_SCOPE("adios_mgr_init_restart_output_file");
         this->ioRestart = adios.DeclareIO("RestartOutput");
         this->ioRestart.SetEngine("BP5");
         auto filePath = restartDirName + "/restart_" + to_string(cartisianRank) + ".bp";
+        CALI_MARK_ADIOS_OPEN_BEGIN;
         engineRestart = ioRestart.Open(filePath, col->getRestart_status() == 0 ? adios2::Mode::Write : adios2::Mode::Append, MPI_COMM_SELF);
+        CALI_MARK_ADIOS_OPEN_END;
 
         // parse the tag and prepae the map
         restartTag.erase(remove(restartTag.begin(), restartTag.end(), ' '), restartTag.end());
@@ -126,6 +143,7 @@ void ADIOS2Manager::appendFieldOutput(int cycle) {
 void ADIOS2Manager::appendParticleOutput(int cycle) {
     if (particleOptions.empty()) return;
 
+    CALI_MARK_BEGIN("adios_mgr_append_particle_output");
     engineParticle.BeginStep();
 
     auto cycleVar = _variableHelper<int>(ioParticle, "cycle");
@@ -145,12 +163,14 @@ void ADIOS2Manager::appendParticleOutput(int cycle) {
     // engineParticle.Put<int>(timeVar, duration.count());
 
     engineParticle.EndStep();
+    CALI_MARK_END("adios_mgr_append_particle_output");
 
 }
 
 
 void ADIOS2Manager::appendRestartOutput(int cycle) {
 
+    CALI_MARK_BEGIN("adios_mgr_append_restart_output");
     engineRestart.BeginStep();
 
     auto cycleVar = _variableHelper<int>(ioRestart, "cycle");
@@ -160,6 +180,7 @@ void ADIOS2Manager::appendRestartOutput(int cycle) {
     }
 
     engineRestart.EndStep();
+    CALI_MARK_END("adios_mgr_append_restart_output");
 
 }
 
@@ -177,19 +198,26 @@ void ADIOS2Manager::appendOutput(int cycle) {
 
 
 void ADIOS2Manager::closeOutputFiles() {
+    CALI_CXX_MARK_SCOPE("adios_mgr_close_output_files");
 
     if (!open) return;
 
     if (!fieldTag.empty()) {
+        CALI_MARK_ADIOS_CLOSE_BEGIN;
         engineField.Close();
+        CALI_MARK_ADIOS_CLOSE_END;
     }
 
     if (!particleTag.empty()) {
+        CALI_MARK_ADIOS_CLOSE_BEGIN;
         engineParticle.Close();
+        CALI_MARK_ADIOS_CLOSE_END;
     }
 
     if (!restartTag.empty()) {
+        CALI_MARK_ADIOS_CLOSE_BEGIN;
         engineRestart.Close();
+        CALI_MARK_ADIOS_CLOSE_END;
     }
 
     open = false;

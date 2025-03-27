@@ -34,9 +34,16 @@
 #include "asserts.h" // for assert_ge
 #include "string.h"
 
+#include "ipic3d_cali.h"
+
 #ifdef USE_ADIOS2
 #include "adios2.h"
 #endif
+
+#define CALI_MARK_ADIOS_OPEN_BEGIN CALI_MARK_BEGIN("adios_open_file")
+#define CALI_MARK_ADIOS_OPEN_END CALI_MARK_END("adios_open_file")
+#define CALI_MARK_ADIOS_CLOSE_BEGIN CALI_MARK_BEGIN("adios_close_file")
+#define CALI_MARK_ADIOS_CLOSE_END CALI_MARK_END("adios_close_file")
 
 // order must agree with Enum in Collective.h
 static const char *enumNames[] =
@@ -89,6 +96,7 @@ void Collective::ReadInput(string inputfile) {
   ConfigFile config(inputfile);
   // the following variables are ALWAYS taken from inputfile, even if restarting 
   {
+    CALI_CXX_MARK_FUNCTION;
 
 #ifdef BATSRUS
     if(RESTART1)
@@ -477,6 +485,7 @@ void Collective::ReadInput(string inputfile) {
 
 #ifndef NO_HDF5 
   if (RESTART1) {               // you are restarting 
+    CALI_CXX_MARK_SCOPE("restart");
     RestartDirName = config.read < string > ("RestartDirName","data");
     //ReadRestart(RestartDirName); // not from restart file
     restart_status = 1;
@@ -489,10 +498,13 @@ void Collective::ReadInput(string inputfile) {
 
     io = adios.DeclareIO("restart");
     io.SetEngine("BP5");
+    CALI_MARK_ADIOS_OPEN_BEGIN;
     engine = io.Open(filePath, adios2::Mode::Read);
+    CALI_MARK_ADIOS_OPEN_END;
 
     auto stepNum = engine.Steps();
 
+    CALI_MARK_BEGIN("restart_load_loop");
     for(unsigned int step = 0; engine.BeginStep() == adios2::StepStatus::OK; ++step) {
 
       if (step < stepNum-1) {// to read the last step
@@ -507,7 +519,10 @@ void Collective::ReadInput(string inputfile) {
       break; // a must, or loop forever in next beginStep
 
     }
+    CALI_MARK_END("restart_load_loop");
+    CALI_MARK_ADIOS_CLOSE_BEGIN;
     engine.Close();
+    CALI_MARK_ADIOS_CLOSE_END;
 
   }
 #endif
@@ -852,6 +867,7 @@ void Collective::read_field_restart(// real field read from restart file
     arr3_double Ex, arr3_double Ey, arr3_double Ez,
     array4_double* rhons_, int ns)const
 {
+  CALI_CXX_MARK_FUNCTION;
 #ifndef USE_ADIOS2
   eprintf("Require ADIOS2 to read from restart file.");
 #else
@@ -876,10 +892,13 @@ void Collective::read_field_restart(// real field read from restart file
     // open BP file
     ioField = adios.DeclareIO("Field");
     ioField.SetEngine("BP5");
+    CALI_MARKCALI_MARK_ADIOS_OPEN_BEGIN;
     engineField = ioField.Open(name_file, adios2::Mode::Read);
+    CALI_MARKCALI_MARK_ADIOS_OPEN_END;
 
     auto stepNum = engineField.Steps();
 
+    CALI_MARK_BEGIN("load_restart_data");
     for(unsigned int step = 0; engineField.BeginStep() == adios2::StepStatus::OK; ++step) {
 
       if (step < stepNum-1) {// to read the last step
@@ -893,7 +912,9 @@ void Collective::read_field_restart(// real field read from restart file
       engineField.Get<int>("cycle", lastCycle, adios2::Mode::Sync);
       if (lastCycle != last_cycle) {
         engineField.EndStep();
+        CALI_MARK_ADIOS_CLOSE_BEGIN;
         engineField.Close();  
+        CALI_MARK_ADIOS_CLOSE_END;
 
         printf("last_cycle = %d\n", lastCycle);
         printf("last_cycle = %d\n", last_cycle);
@@ -924,8 +945,11 @@ void Collective::read_field_restart(// real field read from restart file
       engineField.EndStep();
       break; // a must, or loop forever in next beginStep
     }
+    CALI_MARK_END("load_restart_data");
 
+    CALI_MARK_ADIOS_CLOSE_BEGIN;
     engineField.Close();
+    CALI_MARK_ADIOS_CLOSE_END;
 
 #endif
 }
@@ -944,6 +968,7 @@ void Collective::read_particles_restart(
     vector_double& z,
     vector_double& t)const
 { // real particles read from restart file
+  CALI_CXX_MARK_FUNCTION;
 
 #ifndef USE_ADIOS2
   eprintf("Require ADIOS2 to read from restart file.");
@@ -964,8 +989,11 @@ void Collective::read_particles_restart(
     // open BP file
     ioParticle = adios.DeclareIO("Particles");
     ioParticle.SetEngine("BP5");
+    CALI_MARK_ADIOS_OPEN_BEGIN;
     engineParticle = ioParticle.Open(name_file, adios2::Mode::Read);
+    CALI_MARK_ADIOS_OPEN_END;
     auto stepNum = engineParticle.Steps();
+    CALI_MARK_BEGIN("load_restart_data");
     for(unsigned int step = 0; engineParticle.BeginStep() == adios2::StepStatus::OK; ++step) {
 
       if (step < stepNum-1) {// to read the last step
@@ -1030,7 +1058,10 @@ void Collective::read_particles_restart(
       engineParticle.EndStep();
       break; // a must, or loop forever in next beginStep
     }
+    CALI_MARK_BEGIN("load_restart_data");
+    CALI_MARK_ADIOS_CLOSE_BEGIN;
     engineParticle.Close();
+    CALI_MARK_ADIOS_CLOSE_END;
 
 #endif
 

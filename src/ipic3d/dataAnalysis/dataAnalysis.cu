@@ -11,6 +11,8 @@
 #include "outputPrepare.h"
 #include "threadPool.hpp"
 
+#include "ipic3d_cali.h"
+
 #include "dataAnalysis.cuh"
 #include "dataAnalysisConfig.cuh"
 #include "GMM/cudaGMM.cuh"
@@ -363,6 +365,7 @@ int dataAnalysisPipelineImpl::waitForAnalysis(){
 #ifdef USE_ADIOS2
 
 void dataAnalysisPipelineImpl::outputGMMADIOS2() {
+    CALI_MARK_SCOPE("adios_output_gmm");
     if constexpr (!GMM_OUTPUT) return;
 
     constexpr int GMMDim = 2;
@@ -372,6 +375,7 @@ void dataAnalysisPipelineImpl::outputGMMADIOS2() {
     adios2::Variable<int> varInt[ns][3][3];
 
     // register the variables
+    CALI_MARK_BEGIN("adios_define_variables");
     for(int i = 0; i < ns; i++){
         for(int j = 0; j < 3; j++){
             std::string uvw[3] = {"uv", "vw", "uw"};
@@ -401,10 +405,13 @@ void dataAnalysisPipelineImpl::outputGMMADIOS2() {
 
         }
     }
+    CALI_MARK_END("adios_define_variables");
 
 
     int cycleCount = gmmResults[0][0].size();
+    CALI_MARK_LOOP_BEGIN(adios_gmm_steps, "adios_put_gmm_steps");
     for(int i = 0; i < cycleCount; i++){
+        CALI_MARK_ITERATION_BEGIN(adios_gmm_steps, i);
         engineGMM.BeginStep();
         for(int j=0; j < ns; j++){ 
             for(int k=0; k < 3; k++){
@@ -433,7 +440,9 @@ void dataAnalysisPipelineImpl::outputGMMADIOS2() {
             }
         }
         engineGMM.EndStep();
+        CALI_MARK_ITERATION_END(adios_gmm_steps);
     }
+    CALI_MARK_LOOP_END(adios_gmm_steps);
 
     engineGMM.Close();
 }
