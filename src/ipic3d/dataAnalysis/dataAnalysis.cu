@@ -36,9 +36,10 @@ using weightType = velocityHistogram::histogramTypeOut;
 
 class dataAnalysisPipelineImpl {
 
-private:
+public:
   string gmm_output_dir;  
 
+private:
   int ns;
   int deviceOnNode;
   // pointers to objects in KCode
@@ -531,7 +532,7 @@ void dataAnalysisPipeline::createOutputDirectory(
 
   if constexpr (GMM_ENABLE && GMM_OUTPUT) {
     auto GMMSubDomainOutputPath =
-        gmm_output_dir + "subDomain" + std::to_string(myrank) + "/";
+        impl->gmm_output_dir + "subDomain" + std::to_string(myrank) + "/";
     if (0 != checkOutputFolder(GMMSubDomainOutputPath)) {
       throw std::runtime_error(
           "[!]Error: Can not create output folder for velocity GMM");
