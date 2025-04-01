@@ -1,13 +1,14 @@
-/* iPIC3D was originally developed by Stefano Markidis and Giovanni Lapenta. 
+/* iPIC3D was originally developed by Stefano Markidis and Giovanni Lapenta.
  * This release was contributed by Alec Johnson and Ivy Bo Peng.
- * Publications that use results from iPIC3D need to properly cite  
- * 'S. Markidis, G. Lapenta, and Rizwan-uddin. "Multi-scale simulations of 
- * plasma with iPIC3D." Mathematics and Computers in Simulation 80.7 (2010): 1509-1519.'
+ * Publications that use results from iPIC3D need to properly cite
+ * 'S. Markidis, G. Lapenta, and Rizwan-uddin. "Multi-scale simulations of
+ * plasma with iPIC3D." Mathematics and Computers in Simulation 80.7 (2010):
+ * 1509-1519.'
  *
  *        Copyright 2015 KTH Royal Institute of Technology
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at 
+ * You may obtain a copy of the License at
  *
  *         http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -18,21 +19,20 @@
  * limitations under the License.
  */
 
-
-#include <mpi.h>
+#include "Collective.h"
+#include "ConfigFile.h"
+#include "MPIdata.h"
+#include "asserts.h" // for assert_ge
+#include "debug.h"
+#include "input_array.h"
+#include "ipichdf5.h"
+#include "limits.h" // for INT_MAX
+#include "string.h"
 #include <math.h>
+#include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-#include "input_array.h"
-#include "ipichdf5.h"
-#include "Collective.h"
-#include "ConfigFile.h"
-#include "limits.h" // for INT_MAX
-#include "MPIdata.h"
-#include "debug.h"
-#include "asserts.h" // for assert_ge
-#include "string.h"
 
 #include "ipic3d_cali.h"
 
@@ -46,118 +46,109 @@
 #define CALI_MARK_ADIOS_CLOSE_END CALI_MARK_END("adios_close_file")
 
 // order must agree with Enum in Collective.h
-static const char *enumNames[] =
-{
-  "default",
-  "initial",
-  "final",
-  // used by ImplSusceptMode
-  "explPredict",
-  "implPredict",
-  // marker for last enumerated symbol of this class
-  "NUMBER_OF_ENUMS",
-  "INVALID_ENUM"
-};
+static const char *enumNames[] = {
+    "default", "initial", "final",
+    // used by ImplSusceptMode
+    "explPredict", "implPredict",
+    // marker for last enumerated symbol of this class
+    "NUMBER_OF_ENUMS", "INVALID_ENUM"};
 
-int Collective::read_enum_parameter(const char* option_name, const char* default_value,
-  const ConfigFile& config)
-{
-  string enum_name = config.read < string >(option_name,default_value);
+int Collective::read_enum_parameter(const char *option_name,
+                                    const char *default_value,
+                                    const ConfigFile &config) {
+  string enum_name = config.read<string>(option_name, default_value);
   // search the list (could use std::map)
   //
-  for(int i=0;i<NUMBER_OF_ENUMS;i++)
-  {
-    if(!strcmp(enum_name.c_str(),enumNames[i]))
+  for (int i = 0; i < NUMBER_OF_ENUMS; i++) {
+    if (!strcmp(enum_name.c_str(), enumNames[i]))
       return i;
   }
   // could not find enum, so issue error and quit.
-  if(!MPIdata::get_rank())
-  {
+  if (!MPIdata::get_rank()) {
     eprintf("in input file %s there is an invalid option %s\n",
-      inputfile.c_str(), enum_name.c_str());
+            inputfile.c_str(), enum_name.c_str());
   }
   MPIdata::exit(1);
   // this is a better way
   return INVALID_ENUM;
 }
 
-const char* Collective::get_name_of_enum(int in)
-{
+const char *Collective::get_name_of_enum(int in) {
   assert_ge(in, 0);
   assert_lt(in, NUMBER_OF_ENUMS);
   return enumNames[in];
 }
 
-/*! Read the input file from text file and put the data in a collective wrapper: if it's a restart read from input file basic sim data and load particles and EM field from restart file */
+/*! Read the input file from text file and put the data in a collective wrapper:
+ * if it's a restart read from input file basic sim data and load particles and
+ * EM field from restart file */
 void Collective::ReadInput(string inputfile) {
   using namespace std;
   int test_verbose;
-  // Loading the input file 
+  // Loading the input file
   ConfigFile config(inputfile);
-  // the following variables are ALWAYS taken from inputfile, even if restarting 
+  // the following variables are ALWAYS taken from inputfile, even if restarting
   {
     CALI_CXX_MARK_FUNCTION;
 
 #ifdef BATSRUS
-    if(RESTART1)
-    {
-      cout<<" The fluid interface can not handle RESTART yet, aborting!\n"<<flush;
+    if (RESTART1) {
+      cout << " The fluid interface can not handle RESTART yet, aborting!\n"
+           << flush;
       abort();
     }
 #endif
 
-    dt = config.read < double >("dt");
-    ncycles = config.read < int >("ncycles");
-    th = config.read < double >("th",1.0);
+    dt = config.read<double>("dt");
+    ncycles = config.read<int>("ncycles");
+    th = config.read<double>("th", 1.0);
 
-    Smooth = config.read < double >("Smooth",1.0);
-    SmoothNiter = config.read < int >("SmoothNiter",6);
+    Smooth = config.read<double>("Smooth", 1.0);
+    SmoothNiter = config.read<int>("SmoothNiter", 6);
 
-    SaveDirName = config.read < string > ("SaveDirName","data");
-    RestartDirName = config.read < string > ("RestartDirName","data");
-    ns = config.read < int >("ns");
-    nstestpart = config.read < int >("nsTestPart", 0);
-    NpMaxNpRatio = config.read < double >("NpMaxNpRatio",1.5);
+    SaveDirName = config.read<string>("SaveDirName", "data");
+    RestartDirName = config.read<string>("RestartDirName", "data");
+    ns = config.read<int>("ns");
+    nstestpart = config.read<int>("nsTestPart", 0);
+    NpMaxNpRatio = config.read<double>("NpMaxNpRatio", 1.5);
     assert_ge(NpMaxNpRatio, 1.);
     // mode parameters for second order in time
-    PushWithBatTime = config.read < double >("PushWithBatTime",0);
-    PushWithEatTime = config.read < double >("PushWithEatTime",1);
-    ImplSusceptTime = config.read < double >("ImplSusceptTime",0);
-    ImplSusceptMode = read_enum_parameter("ImplSusceptMode", "initial",config);
-    switch(ImplSusceptMode)
-    {
-      // values not yet supported:
-      case explPredict:
-      case implPredict:
-      default:
-        unsupported_value_error(ImplSusceptMode);
-      // supported values:
-      case initial:
-        ;
+    PushWithBatTime = config.read<double>("PushWithBatTime", 0);
+    PushWithEatTime = config.read<double>("PushWithEatTime", 1);
+    ImplSusceptTime = config.read<double>("ImplSusceptTime", 0);
+    ImplSusceptMode = read_enum_parameter("ImplSusceptMode", "initial", config);
+    switch (ImplSusceptMode) {
+    // values not yet supported:
+    case explPredict:
+    case implPredict:
+    default:
+      unsupported_value_error(ImplSusceptMode);
+    // supported values:
+    case initial:;
     }
-    // GEM Challenge 
-    B0x = config.read <double>("B0x",0.0);
-    B0y = config.read <double>("B0y",0.0);
-    B0z = config.read <double>("B0z",0.0);
+    // GEM Challenge
+    B0x = config.read<double>("B0x", 0.0);
+    B0y = config.read<double>("B0y", 0.0);
+    B0z = config.read<double>("B0z", 0.0);
 
     // Earth parameters
     B1x = 0.0;
     B1y = 0.0;
     B1z = 0.0;
-    B1x = config.read <double>("B1x",0.0);
-    B1y = config.read <double>("B1y",0.0);
-    B1z = config.read <double>("B1z",0.0);
+    B1x = config.read<double>("B1x", 0.0);
+    B1y = config.read<double>("B1y", 0.0);
+    B1z = config.read<double>("B1z", 0.0);
 
-    delta = config.read < double >("delta",0.5);
+    delta = config.read<double>("delta", 0.5);
 
-    Case              = config.read<string>("Case");
-    wmethod           = config.read<string>("WriteMethod");
-    SimName           = config.read<string>("SimulationName");
+    Case = config.read<string>("Case");
+    wmethod = config.read<string>("WriteMethod");
+    SimName = config.read<string>("SimulationName");
     PoissonCorrection = config.read<string>("PoissonCorrection");
-    PoissonCorrectionCycle = config.read<int>("PoissonCorrectionCycle",10);
+    PoissonCorrectionCycle = config.read<int>("PoissonCorrectionCycle", 10);
 
     rhoINIT = std::make_unique<double[]>(ns);
-    array_double rhoINIT0 = config.read < array_double > ("rhoINIT");
+    array_double rhoINIT0 = config.read<array_double>("rhoINIT");
     rhoINIT[0] = rhoINIT0.a;
     if (ns > 1)
       rhoINIT[1] = rhoINIT0.b;
@@ -170,79 +161,80 @@ void Collective::ReadInput(string inputfile) {
     if (ns > 5)
       rhoINIT[5] = rhoINIT0.f;
 
-    rhoINJECT =std::make_unique<double[]>(ns);
-    array_double rhoINJECT0 = config.read<array_double>( "rhoINJECT" );
-    rhoINJECT[0]=rhoINJECT0.a;
+    rhoINJECT = std::make_unique<double[]>(ns);
+    array_double rhoINJECT0 = config.read<array_double>("rhoINJECT");
+    rhoINJECT[0] = rhoINJECT0.a;
     if (ns > 1)
-      rhoINJECT[1]=rhoINJECT0.b;
+      rhoINJECT[1] = rhoINJECT0.b;
     if (ns > 2)
-      rhoINJECT[2]=rhoINJECT0.c;
+      rhoINJECT[2] = rhoINJECT0.c;
     if (ns > 3)
-      rhoINJECT[3]=rhoINJECT0.d;
+      rhoINJECT[3] = rhoINJECT0.d;
     if (ns > 4)
-      rhoINJECT[4]=rhoINJECT0.e;
+      rhoINJECT[4] = rhoINJECT0.e;
     if (ns > 5)
-      rhoINJECT[5]=rhoINJECT0.f;
+      rhoINJECT[5] = rhoINJECT0.f;
 
     // take the tolerance of the solvers
-    CGtol = config.read < double >("CGtol",1e-3);
-    GMREStol = config.read < double >("GMREStol",1e-3);
-    NiterMover = config.read < int >("NiterMover",3);
+    CGtol = config.read<double>("CGtol", 1e-3);
+    GMREStol = config.read<double>("GMREStol", 1e-3);
+    NiterMover = config.read<int>("NiterMover", 3);
     // take the injection of the particless
-    Vinj = config.read < double >("Vinj",0.0);
+    Vinj = config.read<double>("Vinj", 0.0);
 
     // take the output cycles
-    FieldOutputCycle = config.read < int >("FieldOutputCycle",100);
-    ParticlesOutputCycle = config.read < int >("ParticlesOutputCycle",0);
-    FieldOutputTag     =   config.read <string>("FieldOutputTag","");
-    ParticlesOutputTag =   config.read <string>("ParticlesOutputTag","");
-    MomentsOutputTag   =   config.read <string>("MomentsOutputTag","");
-    TestParticlesOutputCycle = config.read < int >("TestPartOutputCycle",0);
-    testPartFlushCycle = config.read < int >("TestParticlesOutputCycle",10);
-    RestartOutputCycle = config.read < int >("RestartOutputCycle",5000);
-    DiagnosticsOutputCycle = config.read < int >("DiagnosticsOutputCycle", FieldOutputCycle);
-    ParaviewScriptPath     =   config.read <string>("ParaviewScriptPath", "");
-    CallFinalize = config.read < bool >("CallFinalize", true);
+    FieldOutputCycle = config.read<int>("FieldOutputCycle", 100);
+    ParticlesOutputCycle = config.read<int>("ParticlesOutputCycle", 0);
+    FieldOutputTag = config.read<string>("FieldOutputTag", "");
+    ParticlesOutputTag = config.read<string>("ParticlesOutputTag", "");
+    MomentsOutputTag = config.read<string>("MomentsOutputTag", "");
+    TestParticlesOutputCycle = config.read<int>("TestPartOutputCycle", 0);
+    testPartFlushCycle = config.read<int>("TestParticlesOutputCycle", 10);
+    RestartOutputCycle = config.read<int>("RestartOutputCycle", 5000);
+    DiagnosticsOutputCycle =
+        config.read<int>("DiagnosticsOutputCycle", FieldOutputCycle);
+    ParaviewScriptPath = config.read<string>("ParaviewScriptPath", "");
+    CallFinalize = config.read<bool>("CallFinalize", true);
   }
 
-  //read everything from input file, if restart is true, overwrite the setting - bug fixing
+  // read everything from input file, if restart is true, overwrite the setting
+  // - bug fixing
 
   restart_status = 0;
   last_cycle = -1;
-  c = config.read < double >("c",1.0);
+  c = config.read<double>("c", 1.0);
 
 #ifdef BATSRUS
   // set grid size and resolution based on the initial file from fluid code
-  Lx =  getFluidLx();
-  Ly =  getFluidLy();
-  Lz =  getFluidLz();
+  Lx = getFluidLx();
+  Ly = getFluidLy();
+  Lz = getFluidLz();
   nxc = getFluidNxc();
   nyc = getFluidNyc();
   nzc = getFluidNzc();
 #else
-  Lx = config.read < double >("Lx",10.0);
-  Ly = config.read < double >("Ly",10.0);
-  Lz = config.read < double >("Lz",10.0);
-  nxc = config.read < int >("nxc",64);
-  nyc = config.read < int >("nyc",64);
-  nzc = config.read < int >("nzc",64);
+  Lx = config.read<double>("Lx", 10.0);
+  Ly = config.read<double>("Ly", 10.0);
+  Lz = config.read<double>("Lz", 10.0);
+  nxc = config.read<int>("nxc", 64);
+  nyc = config.read<int>("nyc", 64);
+  nzc = config.read<int>("nzc", 64);
 #endif
-  XLEN = config.read < int >("XLEN",1);
-  YLEN = config.read < int >("YLEN",1);
-  ZLEN = config.read < int >("ZLEN",1);
-  PERIODICX = config.read < bool >("PERIODICX",true);
-  PERIODICY = config.read < bool >("PERIODICY",true);
-  PERIODICZ = config.read < bool >("PERIODICZ",true);
+  XLEN = config.read<int>("XLEN", 1);
+  YLEN = config.read<int>("YLEN", 1);
+  ZLEN = config.read<int>("ZLEN", 1);
+  PERIODICX = config.read<bool>("PERIODICX", true);
+  PERIODICY = config.read<bool>("PERIODICY", true);
+  PERIODICZ = config.read<bool>("PERIODICZ", true);
 
-  PERIODICX_P = config.read < bool >("PERIODICX_P",PERIODICX);
-  PERIODICY_P = config.read < bool >("PERIODICY_P",PERIODICY);
-  PERIODICZ_P = config.read < bool >("PERIODICZ_P",PERIODICZ);
+  PERIODICX_P = config.read<bool>("PERIODICX_P", PERIODICX);
+  PERIODICY_P = config.read<bool>("PERIODICY_P", PERIODICY);
+  PERIODICZ_P = config.read<bool>("PERIODICZ_P", PERIODICZ);
 
-  x_center = config.read < double >("x_center",5.0);
-  y_center = config.read < double >("y_center",5.0);
-  z_center = config.read < double >("z_center",5.0);
-  L_square = config.read < double >("L_square",5.0);
-
+  x_center = config.read<double>("x_center", 5.0);
+  y_center = config.read<double>("y_center", 5.0);
+  z_center = config.read<double>("z_center", 5.0);
+  L_square = config.read<double>("L_square", 5.0);
 
   uth = std::make_unique<double[]>(ns);
   vth = std::make_unique<double[]>(ns);
@@ -251,12 +243,12 @@ void Collective::ReadInput(string inputfile) {
   v0 = std::make_unique<double[]>(ns);
   w0 = std::make_unique<double[]>(ns);
 
-  array_double uth0 = config.read < array_double > ("uth");
-  array_double vth0 = config.read < array_double > ("vth");
-  array_double wth0 = config.read < array_double > ("wth");
-  array_double u00 = config.read < array_double > ("u0");
-  array_double v00 = config.read < array_double > ("v0");
-  array_double w00 = config.read < array_double > ("w0");
+  array_double uth0 = config.read<array_double>("uth");
+  array_double vth0 = config.read<array_double>("vth");
+  array_double wth0 = config.read<array_double>("wth");
+  array_double u00 = config.read<array_double>("u0");
+  array_double v00 = config.read<array_double>("v0");
+  array_double w00 = config.read<array_double>("w0");
 
   uth[0] = uth0.a;
   vth[0] = vth0.a;
@@ -306,144 +298,141 @@ void Collective::ReadInput(string inputfile) {
   }
 
   if (nstestpart > 0) {
-		array_double pitch_angle0 = config.read < array_double > ("pitch_angle");
-		array_double energy0 	  = config.read < array_double > ("energy");
-		pitch_angle = std::make_unique<double[]>(nstestpart);
-		energy      = std::make_unique<double[]>(nstestpart);
-		if (nstestpart > 0) {
-			pitch_angle[0] = pitch_angle0.a;
-			energy[0] 	   = energy0.a;
-		}
-		if (nstestpart > 1) {
-			pitch_angle[1] = pitch_angle0.b;
-			energy[1] 	   = energy0.b;
-		}
-		if (nstestpart > 2) {
-			pitch_angle[2] = pitch_angle0.c;
-			energy[2] 	   = energy0.c;
-		}
-		if (nstestpart > 3) {
-			pitch_angle[3] = pitch_angle0.d;
-			energy[3] 	   = energy0.d;
-		}
-		if (nstestpart > 4) {
-			pitch_angle[4] = pitch_angle0.e;
-			energy[4] 	   = energy0.e;
-		}
-		if (nstestpart > 5) {
-			pitch_angle[5] = pitch_angle0.f;
-			energy[5] 	   = energy0.f;
-		}
-		if (nstestpart > 6) {
-			pitch_angle[6] = pitch_angle0.g;
-			energy[6] 	   = energy0.g;
-		}
-		if (nstestpart > 7) {
-			pitch_angle[7] = pitch_angle0.h;
-			energy[7] 	   = energy0.h;
-		}
+    array_double pitch_angle0 = config.read<array_double>("pitch_angle");
+    array_double energy0 = config.read<array_double>("energy");
+    pitch_angle = std::make_unique<double[]>(nstestpart);
+    energy = std::make_unique<double[]>(nstestpart);
+    if (nstestpart > 0) {
+      pitch_angle[0] = pitch_angle0.a;
+      energy[0] = energy0.a;
+    }
+    if (nstestpart > 1) {
+      pitch_angle[1] = pitch_angle0.b;
+      energy[1] = energy0.b;
+    }
+    if (nstestpart > 2) {
+      pitch_angle[2] = pitch_angle0.c;
+      energy[2] = energy0.c;
+    }
+    if (nstestpart > 3) {
+      pitch_angle[3] = pitch_angle0.d;
+      energy[3] = energy0.d;
+    }
+    if (nstestpart > 4) {
+      pitch_angle[4] = pitch_angle0.e;
+      energy[4] = energy0.e;
+    }
+    if (nstestpart > 5) {
+      pitch_angle[5] = pitch_angle0.f;
+      energy[5] = energy0.f;
+    }
+    if (nstestpart > 6) {
+      pitch_angle[6] = pitch_angle0.g;
+      energy[6] = energy0.g;
+    }
+    if (nstestpart > 7) {
+      pitch_angle[7] = pitch_angle0.h;
+      energy[7] = energy0.h;
+    }
   }
 
-
-  npcelx = std::make_unique<int[]>(ns+nstestpart);
-  npcely = std::make_unique<int[]>(ns+nstestpart);
-  npcelz = std::make_unique<int[]>(ns+nstestpart);
-  qom = std::make_unique<double[]>(ns+nstestpart);
-  array_int npcelx0 = config.read < array_int > ("npcelx");
-  array_int npcely0 = config.read < array_int > ("npcely");
-  array_int npcelz0 = config.read < array_int > ("npcelz");
-  array_double qom0 = config.read < array_double > ("qom");
+  npcelx = std::make_unique<int[]>(ns + nstestpart);
+  npcely = std::make_unique<int[]>(ns + nstestpart);
+  npcelz = std::make_unique<int[]>(ns + nstestpart);
+  qom = std::make_unique<double[]>(ns + nstestpart);
+  array_int npcelx0 = config.read<array_int>("npcelx");
+  array_int npcely0 = config.read<array_int>("npcely");
+  array_int npcelz0 = config.read<array_int>("npcelz");
+  array_double qom0 = config.read<array_double>("qom");
   npcelx[0] = npcelx0.a;
   npcely[0] = npcely0.a;
   npcelz[0] = npcelz0.a;
-  qom[0]	  = qom0.a;
-  int ns_tot =ns+nstestpart;
+  qom[0] = qom0.a;
+  int ns_tot = ns + nstestpart;
   if (ns_tot > 1) {
     npcelx[1] = npcelx0.b;
     npcely[1] = npcely0.b;
     npcelz[1] = npcelz0.b;
-    qom[1]	= qom0.b;
+    qom[1] = qom0.b;
   }
   if (ns_tot > 2) {
     npcelx[2] = npcelx0.c;
     npcely[2] = npcely0.c;
     npcelz[2] = npcelz0.c;
-    qom[2] 	= qom0.c;
+    qom[2] = qom0.c;
   }
   if (ns_tot > 3) {
     npcelx[3] = npcelx0.d;
     npcely[3] = npcely0.d;
     npcelz[3] = npcelz0.d;
-    qom[3] 	= qom0.d;
+    qom[3] = qom0.d;
   }
   if (ns_tot > 4) {
     npcelx[4] = npcelx0.e;
     npcely[4] = npcely0.e;
     npcelz[4] = npcelz0.e;
-    qom[4] 	= qom0.e;
+    qom[4] = qom0.e;
   }
   if (ns_tot > 5) {
     npcelx[5] = npcelx0.f;
     npcely[5] = npcely0.f;
     npcelz[5] = npcelz0.f;
-    qom[5] 	= qom0.f;
+    qom[5] = qom0.f;
   }
   if (ns_tot > 6) {
     npcelx[6] = npcelx0.g;
     npcely[6] = npcely0.g;
     npcelz[6] = npcelz0.g;
-    qom[6] 	= qom0.g;
+    qom[6] = qom0.g;
   }
   if (ns_tot > 7) {
     npcelx[7] = npcelx0.h;
     npcely[7] = npcely0.h;
     npcelz[7] = npcelz0.h;
-    qom[7] 	= qom0.h;
+    qom[7] = qom0.h;
   }
   if (ns_tot > 8) {
     npcelx[8] = npcelx0.i;
     npcely[8] = npcely0.i;
     npcelz[8] = npcelz0.i;
-    qom[8] 	= qom0.i;
+    qom[8] = qom0.i;
   }
   if (ns_tot > 9) {
     npcelx[9] = npcelx0.j;
     npcely[9] = npcely0.j;
     npcelz[9] = npcelz0.j;
-    qom[9] 	= qom0.j;
+    qom[9] = qom0.j;
   }
   if (ns_tot > 10) {
     npcelx[10] = npcelx0.k;
     npcely[10] = npcely0.k;
     npcelz[10] = npcelz0.k;
-    qom[10] 	 = qom0.k;
+    qom[10] = qom0.k;
   }
   if (ns_tot > 11) {
     npcelx[11] = npcelx0.l;
     npcely[11] = npcely0.l;
     npcelz[11] = npcelz0.l;
-    qom[11] 	 = qom0.l;
+    qom[11] = qom0.l;
   }
 
-
-
-  //verbose = config.read < bool > ("verbose",false);
+  // verbose = config.read < bool > ("verbose",false);
 
   // PHI Electrostatic Potential
-  bcPHIfaceXright = config.read < int >("bcPHIfaceXright",1);
-  bcPHIfaceXleft  = config.read < int >("bcPHIfaceXleft",1);
-  bcPHIfaceYright = config.read < int >("bcPHIfaceYright",1);
-  bcPHIfaceYleft  = config.read < int >("bcPHIfaceYleft",1);
-  bcPHIfaceZright = config.read < int >("bcPHIfaceZright",1);
-  bcPHIfaceZleft  = config.read < int >("bcPHIfaceZleft",1);
+  bcPHIfaceXright = config.read<int>("bcPHIfaceXright", 1);
+  bcPHIfaceXleft = config.read<int>("bcPHIfaceXleft", 1);
+  bcPHIfaceYright = config.read<int>("bcPHIfaceYright", 1);
+  bcPHIfaceYleft = config.read<int>("bcPHIfaceYleft", 1);
+  bcPHIfaceZright = config.read<int>("bcPHIfaceZright", 1);
+  bcPHIfaceZleft = config.read<int>("bcPHIfaceZleft", 1);
 
   // EM field boundary condition
-  bcEMfaceXright = config.read < int >("bcEMfaceXright");
-  bcEMfaceXleft  = config.read < int >("bcEMfaceXleft");
-  bcEMfaceYright = config.read < int >("bcEMfaceYright");
-  bcEMfaceYleft  = config.read < int >("bcEMfaceYleft");
-  bcEMfaceZright = config.read < int >("bcEMfaceZright");
-  bcEMfaceZleft  = config.read < int >("bcEMfaceZleft");
+  bcEMfaceXright = config.read<int>("bcEMfaceXright");
+  bcEMfaceXleft = config.read<int>("bcEMfaceXleft");
+  bcEMfaceYright = config.read<int>("bcEMfaceYright");
+  bcEMfaceYleft = config.read<int>("bcEMfaceYleft");
+  bcEMfaceZright = config.read<int>("bcEMfaceZright");
+  bcEMfaceZleft = config.read<int>("bcEMfaceZleft");
 
   /*  ---------------------------------------------------------- */
   /*  Electric and Magnetic field boundary conditions for BCface */
@@ -453,41 +442,60 @@ void Collective::ReadInput(string inputfile) {
   // perfect mirror   : normal = 0,    perpendicular = free
   /*  ---------------------------------------------------------- */
 
-  /* X component in faces Xright, Xleft, Yright, Yleft, Zright and Zleft (0, 1, 2, 3, 4, 5) */
-  bcEx[0] = bcEMfaceXright == 0 ? 2 : 1;   bcBx[0] = bcEMfaceXright == 0 ? 1 : 2;
-  bcEx[1] = bcEMfaceXleft  == 0 ? 2 : 1;   bcBx[1] = bcEMfaceXleft  == 0 ? 1 : 2;
-  bcEx[2] = bcEMfaceYright == 0 ? 1 : 2;   bcBx[2] = bcEMfaceYright == 0 ? 2 : 1;
-  bcEx[3] = bcEMfaceYleft  == 0 ? 1 : 2;   bcBx[3] = bcEMfaceYleft  == 0 ? 2 : 1;
-  bcEx[4] = bcEMfaceZright == 0 ? 1 : 2;   bcBx[4] = bcEMfaceZright == 0 ? 2 : 1;
-  bcEx[5] = bcEMfaceZleft  == 0 ? 1 : 2;   bcBx[5] = bcEMfaceZleft  == 0 ? 2 : 1;
+  /* X component in faces Xright, Xleft, Yright, Yleft, Zright and Zleft (0, 1,
+   * 2, 3, 4, 5) */
+  bcEx[0] = bcEMfaceXright == 0 ? 2 : 1;
+  bcBx[0] = bcEMfaceXright == 0 ? 1 : 2;
+  bcEx[1] = bcEMfaceXleft == 0 ? 2 : 1;
+  bcBx[1] = bcEMfaceXleft == 0 ? 1 : 2;
+  bcEx[2] = bcEMfaceYright == 0 ? 1 : 2;
+  bcBx[2] = bcEMfaceYright == 0 ? 2 : 1;
+  bcEx[3] = bcEMfaceYleft == 0 ? 1 : 2;
+  bcBx[3] = bcEMfaceYleft == 0 ? 2 : 1;
+  bcEx[4] = bcEMfaceZright == 0 ? 1 : 2;
+  bcBx[4] = bcEMfaceZright == 0 ? 2 : 1;
+  bcEx[5] = bcEMfaceZleft == 0 ? 1 : 2;
+  bcBx[5] = bcEMfaceZleft == 0 ? 2 : 1;
   /* Y component */
-  bcEy[0] = bcEMfaceXright == 0 ? 1 : 2;   bcBy[0] = bcEMfaceXright == 0 ? 2 : 1;
-  bcEy[1] = bcEMfaceXleft  == 0 ? 1 : 2;   bcBy[1] = bcEMfaceXleft  == 0 ? 2 : 1;
-  bcEy[2] = bcEMfaceYright == 0 ? 2 : 1;   bcBy[2] = bcEMfaceYright == 0 ? 1 : 2;
-  bcEy[3] = bcEMfaceYleft  == 0 ? 2 : 1;   bcBy[3] = bcEMfaceYleft  == 0 ? 1 : 2;
-  bcEy[4] = bcEMfaceZright == 0 ? 1 : 2;   bcBy[4] = bcEMfaceZright == 0 ? 2 : 1;
-  bcEy[5] = bcEMfaceZleft  == 0 ? 1 : 2;   bcBy[5] = bcEMfaceZleft  == 0 ? 2 : 1;
+  bcEy[0] = bcEMfaceXright == 0 ? 1 : 2;
+  bcBy[0] = bcEMfaceXright == 0 ? 2 : 1;
+  bcEy[1] = bcEMfaceXleft == 0 ? 1 : 2;
+  bcBy[1] = bcEMfaceXleft == 0 ? 2 : 1;
+  bcEy[2] = bcEMfaceYright == 0 ? 2 : 1;
+  bcBy[2] = bcEMfaceYright == 0 ? 1 : 2;
+  bcEy[3] = bcEMfaceYleft == 0 ? 2 : 1;
+  bcBy[3] = bcEMfaceYleft == 0 ? 1 : 2;
+  bcEy[4] = bcEMfaceZright == 0 ? 1 : 2;
+  bcBy[4] = bcEMfaceZright == 0 ? 2 : 1;
+  bcEy[5] = bcEMfaceZleft == 0 ? 1 : 2;
+  bcBy[5] = bcEMfaceZleft == 0 ? 2 : 1;
   /* Z component */
-  bcEz[0] = bcEMfaceXright == 0 ? 1 : 2;   bcBz[0] = bcEMfaceXright == 0 ? 2 : 1;
-  bcEz[1] = bcEMfaceXleft  == 0 ? 1 : 2;   bcBz[1] = bcEMfaceXleft  == 0 ? 2 : 1;
-  bcEz[2] = bcEMfaceYright == 0 ? 1 : 1;   bcBz[2] = bcEMfaceYright == 0 ? 2 : 1;
-  bcEz[3] = bcEMfaceYleft  == 0 ? 1 : 1;   bcBz[3] = bcEMfaceYleft  == 0 ? 2 : 1;
-  bcEz[4] = bcEMfaceZright == 0 ? 2 : 1;   bcBz[4] = bcEMfaceZright == 0 ? 1 : 2;
-  bcEz[5] = bcEMfaceZleft  == 0 ? 2 : 1;   bcBz[5] = bcEMfaceZleft  == 0 ? 1 : 2;
+  bcEz[0] = bcEMfaceXright == 0 ? 1 : 2;
+  bcBz[0] = bcEMfaceXright == 0 ? 2 : 1;
+  bcEz[1] = bcEMfaceXleft == 0 ? 1 : 2;
+  bcBz[1] = bcEMfaceXleft == 0 ? 2 : 1;
+  bcEz[2] = bcEMfaceYright == 0 ? 1 : 1;
+  bcBz[2] = bcEMfaceYright == 0 ? 2 : 1;
+  bcEz[3] = bcEMfaceYleft == 0 ? 1 : 1;
+  bcBz[3] = bcEMfaceYleft == 0 ? 2 : 1;
+  bcEz[4] = bcEMfaceZright == 0 ? 2 : 1;
+  bcBz[4] = bcEMfaceZright == 0 ? 1 : 2;
+  bcEz[5] = bcEMfaceZleft == 0 ? 2 : 1;
+  bcBz[5] = bcEMfaceZleft == 0 ? 1 : 2;
 
   // Particles Boundary condition
-  bcPfaceXright = config.read < int >("bcPfaceXright",1);
-  bcPfaceXleft  = config.read < int >("bcPfaceXleft",1);
-  bcPfaceYright = config.read < int >("bcPfaceYright",1);
-  bcPfaceYleft  = config.read < int >("bcPfaceYleft",1);
-  bcPfaceZright = config.read < int >("bcPfaceZright",1);
-  bcPfaceZleft  = config.read < int >("bcPfaceZleft",1);
+  bcPfaceXright = config.read<int>("bcPfaceXright", 1);
+  bcPfaceXleft = config.read<int>("bcPfaceXleft", 1);
+  bcPfaceYright = config.read<int>("bcPfaceYright", 1);
+  bcPfaceYleft = config.read<int>("bcPfaceYleft", 1);
+  bcPfaceZright = config.read<int>("bcPfaceZright", 1);
+  bcPfaceZleft = config.read<int>("bcPfaceZleft", 1);
 
-#ifndef NO_HDF5 
-  if (RESTART1) {               // you are restarting 
+#ifndef NO_HDF5
+  if (RESTART1) { // you are restarting
     CALI_CXX_MARK_SCOPE("restart");
-    RestartDirName = config.read < string > ("RestartDirName","data");
-    //ReadRestart(RestartDirName); // not from restart file
+    RestartDirName = config.read<string>("RestartDirName", "data");
+    // ReadRestart(RestartDirName); // not from restart file
     restart_status = 1;
 
     // read last cycle from BP
@@ -505,25 +513,25 @@ void Collective::ReadInput(string inputfile) {
     auto stepNum = engine.Steps();
 
     CALI_MARK_BEGIN("restart_load_loop");
-    for(unsigned int step = 0; engine.BeginStep() == adios2::StepStatus::OK; ++step) {
+    for (unsigned int step = 0; engine.BeginStep() == adios2::StepStatus::OK;
+         ++step) {
 
-      if (step < stepNum-1) {// to read the last step
+      if (step < stepNum - 1) { // to read the last step
         engine.EndStep();
-        continue; 
+        continue;
       }
       // read the last cycle
       engine.Get("cycle", last_cycle);
       engine.EndStep();
 
-      if(MPIdata::get_rank() == 0) std::cout << "[*]Restarting last cycle = " << last_cycle << std::endl;
+      if (MPIdata::get_rank() == 0)
+        std::cout << "[*]Restarting last cycle = " << last_cycle << std::endl;
       break; // a must, or loop forever in next beginStep
-
     }
     CALI_MARK_END("restart_load_loop");
     CALI_MARK_ADIOS_CLOSE_BEGIN;
     engine.Close();
     CALI_MARK_ADIOS_CLOSE_END;
-
   }
 #endif
 
@@ -544,174 +552,225 @@ void Collective::ReadInput(string inputfile) {
     */
 }
 
-bool Collective::field_output_is_off()const
-{
-  return (FieldOutputCycle <= 0);
-}
+bool Collective::field_output_is_off() const { return (FieldOutputCycle <= 0); }
 
-bool Collective::particle_output_is_off()const
-{
+bool Collective::particle_output_is_off() const {
   return getParticlesOutputCycle() <= 0;
 }
-bool Collective::testparticle_output_is_off()const
-{
+bool Collective::testparticle_output_is_off() const {
   return getTestParticlesOutputCycle() <= 0;
 }
 
 /*! Read the collective information from the RESTART file in HDF5 format
  * There are three restart status: restart_status = 0 ---> new inputfile
- * restart_status = 1 ---> RESTART and restart and result directories does not coincide
- * restart_status = 2 ---> RESTART and restart and result directories coincide */
+ * restart_status = 1 ---> RESTART and restart and result directories does not
+ * coincide restart_status = 2 ---> RESTART and restart and result directories
+ * coincide */
 int Collective::ReadRestart(string inputfile) { // not used
 #ifdef NO_HDF5
   eprintf("restart requires compiling with HDF5");
 #else
   restart_status = 1;
-  // hdf stuff 
+  // hdf stuff
   hid_t file_id;
   hid_t dataset_id;
   herr_t status;
   // Open the setting file for the restart.
-  file_id = H5Fopen((inputfile + "/settings.hdf").c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  file_id =
+      H5Fopen((inputfile + "/settings.hdf").c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
   if (file_id < 0) {
     cout << "couldn't open file: " << inputfile << endl;
     return -1;
   }
 
   // read c
-  dataset_id = H5Dopen2(file_id, "/collective/c", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &c);
+  dataset_id = H5Dopen2(file_id, "/collective/c", H5P_DEFAULT); // HDF 1.8.8
+  status =
+      H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &c);
   status = H5Dclose(dataset_id);
 
-  // read Lx 
+  // read Lx
   dataset_id = H5Dopen2(file_id, "/collective/Lx", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Lx);
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &Lx);
   status = H5Dclose(dataset_id);
-  // read Ly 
+  // read Ly
   dataset_id = H5Dopen2(file_id, "/collective/Ly", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Ly);
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &Ly);
   status = H5Dclose(dataset_id);
-  // read Lz 
+  // read Lz
   dataset_id = H5Dopen2(file_id, "/collective/Lz", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Lz);
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &Lz);
   status = H5Dclose(dataset_id);
   // read x_center
-  dataset_id = H5Dopen2(file_id, "/collective/x_center", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &x_center);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/x_center", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &x_center);
   status = H5Dclose(dataset_id);
   // read y_center
-  dataset_id = H5Dopen2(file_id, "/collective/y_center", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &y_center);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/y_center", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &y_center);
   status = H5Dclose(dataset_id);
   // read z_center
-  dataset_id = H5Dopen2(file_id, "/collective/z_center", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &z_center);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/z_center", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &z_center);
   status = H5Dclose(dataset_id);
   // read L_square
-  dataset_id = H5Dopen2(file_id, "/collective/L_square", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &L_square);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/L_square", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &L_square);
   status = H5Dclose(dataset_id);
   // read nxc
-  dataset_id = H5Dopen2(file_id, "/collective/Nxc", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nxc);
+  dataset_id = H5Dopen2(file_id, "/collective/Nxc", H5P_DEFAULT); // HDF 1.8.8
+  status =
+      H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nxc);
   status = H5Dclose(dataset_id);
-  // read nyc 
-  dataset_id = H5Dopen2(file_id, "/collective/Nyc", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nyc);
+  // read nyc
+  dataset_id = H5Dopen2(file_id, "/collective/Nyc", H5P_DEFAULT); // HDF 1.8.8
+  status =
+      H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nyc);
   status = H5Dclose(dataset_id);
-  // read nyc 
-  dataset_id = H5Dopen2(file_id, "/collective/Nzc", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nzc);
+  // read nyc
+  dataset_id = H5Dopen2(file_id, "/collective/Nzc", H5P_DEFAULT); // HDF 1.8.8
+  status =
+      H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nzc);
   status = H5Dclose(dataset_id);
   // read ns
   dataset_id = H5Dopen2(file_id, "/collective/Ns", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &ns);
+  status =
+      H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &ns);
   status = H5Dclose(dataset_id);
-  //read number of test particles species
-  dataset_id = H5Dopen2(file_id, "/collective/NsTestPart", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &nstestpart);
+  // read number of test particles species
+  dataset_id =
+      H5Dopen2(file_id, "/collective/NsTestPart", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &nstestpart);
   status = H5Dclose(dataset_id);
 
   /*! Boundary condition information */
   // read EMfaceXleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceXleft", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceXleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/EMfaceXleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceXleft);
   status = H5Dclose(dataset_id);
   // read EMfaceXright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceXright", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceXright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceXright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceXright);
   status = H5Dclose(dataset_id);
   // read EMfaceYleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceYleft", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceYleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/EMfaceYleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceYleft);
   status = H5Dclose(dataset_id);
   // read EMfaceYright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceYright", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceYright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceYright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceYright);
   status = H5Dclose(dataset_id);
   // read EMfaceZleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceZleft", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceZleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/EMfaceZleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceZleft);
   status = H5Dclose(dataset_id);
   // read EMfaceZright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceZright", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcEMfaceZright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/EMfaceZright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcEMfaceZright);
   status = H5Dclose(dataset_id);
 
   // read PHIfaceXleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceXleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceXleft);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceXleft",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceXleft);
   status = H5Dclose(dataset_id);
   // read PHIfaceXright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceXright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceXright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceXright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceXright);
   status = H5Dclose(dataset_id);
   // read PHIfaceYleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceYleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceYleft);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceYleft",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceYleft);
   status = H5Dclose(dataset_id);
   // read PHIfaceYright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceYright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceYright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceYright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceYright);
   status = H5Dclose(dataset_id);
   // read PHIfaceZleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceZleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceZleft);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceZleft",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceZleft);
   status = H5Dclose(dataset_id);
   // read PHIfaceZright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceZright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPHIfaceZright);
+  dataset_id = H5Dopen2(file_id, "/collective/bc/PHIfaceZright",
+                        H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPHIfaceZright);
   status = H5Dclose(dataset_id);
 
   // read PfaceXleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceXleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceXleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceXleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceXleft);
   status = H5Dclose(dataset_id);
   // read PfaceXright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceXright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceXright);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceXright", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceXright);
   status = H5Dclose(dataset_id);
   // read PfaceYleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceYleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceYleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceYleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceYleft);
   status = H5Dclose(dataset_id);
   // read PfaceYright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceYright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceYright);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceYright", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceYright);
   status = H5Dclose(dataset_id);
   // read PfaceZleft
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceZleft", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceZleft);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceZleft", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceZleft);
   status = H5Dclose(dataset_id);
   // read PfaceZright
-  dataset_id = H5Dopen2(file_id, "/collective/bc/PfaceZright", H5P_DEFAULT); // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &bcPfaceZright);
+  dataset_id =
+      H5Dopen2(file_id, "/collective/bc/PfaceZright", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &bcPfaceZright);
   status = H5Dclose(dataset_id);
   // allocate fields depending on species
-  npcelx = std::make_unique<int[]>(ns+nstestpart);
-  npcely = std::make_unique<int[]>(ns+nstestpart);
-  npcelz = std::make_unique<int[]>(ns+nstestpart);
-  qom = std::make_unique<double[]>(ns+nstestpart);
+  npcelx = std::make_unique<int[]>(ns + nstestpart);
+  npcely = std::make_unique<int[]>(ns + nstestpart);
+  npcelz = std::make_unique<int[]>(ns + nstestpart);
+  qom = std::make_unique<double[]>(ns + nstestpart);
   uth = std::make_unique<double[]>(ns);
   vth = std::make_unique<double[]>(ns);
   wth = std::make_unique<double[]>(ns);
@@ -728,78 +787,98 @@ int Collective::ReadRestart(string inputfile) { // not used
     ss[i] << i;
     name_species[i] = "/collective/species_" + ss[i].str() + "/";
   }
-  if(nstestpart>0){
-	  name_testspecies = new string[nstestpart];
-	  testss = new stringstream[nstestpart];
-	  for (int i = 0; i < nstestpart; i++) {
-		  testss[i] << (i+ns);
-		  name_testspecies[i] = "/collective/testspecies_" + testss[i].str() + "/";
-	  }
+  if (nstestpart > 0) {
+    name_testspecies = new string[nstestpart];
+    testss = new stringstream[nstestpart];
+    for (int i = 0; i < nstestpart; i++) {
+      testss[i] << (i + ns);
+      name_testspecies[i] = "/collective/testspecies_" + testss[i].str() + "/";
+    }
 
-	  pitch_angle = std::make_unique<double[]>(nstestpart);
-	  energy      = std::make_unique<double[]>(nstestpart);
-	  for (int i = 0; i < nstestpart; i++) {
-	    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "pitch_angle").c_str(), H5P_DEFAULT); // HDF 1.8.8
-	    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &pitch_angle[i]);
-	    status = H5Dclose(dataset_id);
+    pitch_angle = std::make_unique<double[]>(nstestpart);
+    energy = std::make_unique<double[]>(nstestpart);
+    for (int i = 0; i < nstestpart; i++) {
+      dataset_id =
+          H5Dopen2(file_id, (name_testspecies[i] + "pitch_angle").c_str(),
+                   H5P_DEFAULT); // HDF 1.8.8
+      status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
+                       H5P_DEFAULT, &pitch_angle[i]);
+      status = H5Dclose(dataset_id);
 
-	    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "energy").c_str(), H5P_DEFAULT); // HDF 1.8.8
-	    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &energy[i]);
-	    status = H5Dclose(dataset_id);
-	  }
+      dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "energy").c_str(),
+                            H5P_DEFAULT); // HDF 1.8.8
+      status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL,
+                       H5P_DEFAULT, &energy[i]);
+      status = H5Dclose(dataset_id);
+    }
   }
 
   // npcelx for different species
   for (int i = 0; i < ns; i++) {
-    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcelx").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcelx[i]);
+    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcelx").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcelx[i]);
     status = H5Dclose(dataset_id);
   }
   // npcely for different species
   for (int i = 0; i < ns; i++) {
-    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcely").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcely[i]);
+    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcely").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcely[i]);
     status = H5Dclose(dataset_id);
   }
   // npcelz for different species
   for (int i = 0; i < ns; i++) {
-    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcelz").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcelz[i]);
+    dataset_id = H5Dopen2(file_id, (name_species[i] + "Npcelz").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcelz[i]);
     status = H5Dclose(dataset_id);
   }
   // qom for different species
   for (int i = 0; i < ns; i++) {
-    dataset_id = H5Dopen2(file_id, (name_species[i] + "qom").c_str(), H5P_DEFAULT);  // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &qom[i]);
+    dataset_id = H5Dopen2(file_id, (name_species[i] + "qom").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &qom[i]);
     status = H5Dclose(dataset_id);
   }
 
-  //Test Particle
-  // npcelx for different species
-  for (int i = ns; i < (ns+nstestpart); i++) {
-    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcelx").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcelx[i]);
+  // Test Particle
+  //  npcelx for different species
+  for (int i = ns; i < (ns + nstestpart); i++) {
+    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcelx").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcelx[i]);
     status = H5Dclose(dataset_id);
   }
   // npcely for different species
-  for (int i = ns; i < (ns+nstestpart); i++) {
-    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcely").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcely[i]);
+  for (int i = ns; i < (ns + nstestpart); i++) {
+    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcely").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcely[i]);
     status = H5Dclose(dataset_id);
   }
   // npcelz for different species
-  for (int i = ns; i < (ns+nstestpart); i++) {
-    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcelz").c_str(), H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &npcelz[i]);
+  for (int i = ns; i < (ns + nstestpart); i++) {
+    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "Npcelz").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     &npcelz[i]);
     status = H5Dclose(dataset_id);
   }
   // qom for different species
-  for (int i = ns; i < (ns+nstestpart); i++) {
-    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "qom").c_str(), H5P_DEFAULT);  // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &qom[i]);
+  for (int i = ns; i < (ns + nstestpart); i++) {
+    dataset_id = H5Dopen2(file_id, (name_testspecies[i] + "qom").c_str(),
+                          H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &qom[i]);
     status = H5Dclose(dataset_id);
   }
-
 
   /*! not needed for restart * */
   for (int i = 0; i < ns; i++)
@@ -815,42 +894,49 @@ int Collective::ReadRestart(string inputfile) { // not used
   for (int i = 0; i < ns; i++)
     w0[i] = 0.0;
   // verbose on
-  //verbose = 1;
+  // verbose = 1;
 
-
-  // if RestartDirName == SaveDirName overwrite dt,Th,Smooth (append to old hdf files)
+  // if RestartDirName == SaveDirName overwrite dt,Th,Smooth (append to old hdf
+  // files)
   if (RestartDirName == SaveDirName) {
     restart_status = 2;
     // read dt
     dataset_id = H5Dopen2(file_id, "/collective/Dt", H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &dt);
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &dt);
     status = H5Dclose(dataset_id);
-    // read th 
+    // read th
     dataset_id = H5Dopen2(file_id, "/collective/Th", H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &th);
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &th);
     status = H5Dclose(dataset_id);
     // read Smooth
-    dataset_id = H5Dopen2(file_id, "/collective/Smooth", H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &Smooth);
+    dataset_id =
+        H5Dopen2(file_id, "/collective/Smooth", H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &Smooth);
     status = H5Dclose(dataset_id);
-    dataset_id = H5Dopen2(file_id, "/collective/SmoothNiter", H5P_DEFAULT); // HDF 1.8.8
-    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &SmoothNiter);
+    dataset_id =
+        H5Dopen2(file_id, "/collective/SmoothNiter", H5P_DEFAULT); // HDF 1.8.8
+    status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                     H5P_DEFAULT, &SmoothNiter);
     status = H5Dclose(dataset_id);
   }
 
   status = H5Fclose(file_id);
 
-
   // read last cycle (not from settings, but from restart0.hdf)
 
-  file_id = H5Fopen((inputfile + "/restart0.hdf").c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  file_id =
+      H5Fopen((inputfile + "/restart0.hdf").c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
   if (file_id < 0) {
     cout << "couldn't open file: " << inputfile << endl;
     return -1;
   }
 
-  dataset_id = H5Dopen2(file_id, "/last_cycle", H5P_DEFAULT);  // HDF 1.8.8
-  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, &last_cycle);
+  dataset_id = H5Dopen2(file_id, "/last_cycle", H5P_DEFAULT); // HDF 1.8.8
+  status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   &last_cycle);
   status = H5Dclose(dataset_id);
   status = H5Fclose(file_id);
 
@@ -859,97 +945,104 @@ int Collective::ReadRestart(string inputfile) { // not used
   return (0);
 }
 
-
-void Collective::read_field_restart(// real field read from restart file
-    const VCtopology3D* vct,
-    const Grid* grid,
-    arr3_double Bxn, arr3_double Byn, arr3_double Bzn,
-    arr3_double Ex, arr3_double Ey, arr3_double Ez,
-    array4_double* rhons_, int ns)const
-{
+void Collective::read_field_restart( // real field read from restart file
+    const VCtopology3D *vct, const Grid *grid, arr3_double Bxn, arr3_double Byn,
+    arr3_double Bzn, arr3_double Ex, arr3_double Ey, arr3_double Ez,
+    array4_double *rhons_, int ns) const {
   CALI_CXX_MARK_FUNCTION;
 #ifndef USE_ADIOS2
   eprintf("Require ADIOS2 to read from restart file.");
 #else
-    const int nxn = grid->getNXN();
-    const int nyn = grid->getNYN();
-    const int nzn = grid->getNZN();
-    if (vct->getCartesian_rank() == 0)
-    {
-      printf("LOADING EM FIELD FROM RESTART FILE in %s/restart.bp\n",getRestartDirName().c_str());
-    }
+  const int nxn = grid->getNXN();
+  const int nyn = grid->getNYN();
+  const int nzn = grid->getNZN();
+  if (vct->getCartesian_rank() == 0) {
+    printf("LOADING EM FIELD FROM RESTART FILE in %s/restart.bp\n",
+           getRestartDirName().c_str());
+  }
 
-    stringstream ss;
-    ss << vct->getCartesian_rank();
-    string name_file = getRestartDirName() + "/restart_" + ss.str() + ".bp";
+  stringstream ss;
+  ss << vct->getCartesian_rank();
+  string name_file = getRestartDirName() + "/restart_" + ss.str() + ".bp";
 
-    // ghost cells are also copied 
+  // ghost cells are also copied
 
-    adios2::ADIOS adios;
-    adios2::IO ioField;
-    adios2::Engine engineField;
+  adios2::ADIOS adios;
+  adios2::IO ioField;
+  adios2::Engine engineField;
 
-    // open BP file
-    ioField = adios.DeclareIO("Field");
-    ioField.SetEngine("BP5");
-    CALI_MARKCALI_MARK_ADIOS_OPEN_BEGIN;
-    engineField = ioField.Open(name_file, adios2::Mode::Read);
-    CALI_MARKCALI_MARK_ADIOS_OPEN_END;
+  // open BP file
+  ioField = adios.DeclareIO("Field");
+  ioField.SetEngine("BP5");
+  CALI_MARK_ADIOS_OPEN_BEGIN;
+  engineField = ioField.Open(name_file, adios2::Mode::Read);
+  CALI_MARK_ADIOS_OPEN_END;
 
-    auto stepNum = engineField.Steps();
+  auto stepNum = engineField.Steps();
 
-    CALI_MARK_BEGIN("load_restart_data");
-    for(unsigned int step = 0; engineField.BeginStep() == adios2::StepStatus::OK; ++step) {
+  CALI_MARK_BEGIN("load_restart_data");
+  for (unsigned int step = 0; engineField.BeginStep() == adios2::StepStatus::OK;
+       ++step) {
 
-      if (step < stepNum-1) {// to read the last step
-        engineField.EndStep();
-        continue; 
-      }
-
-      // last cycle
-      int lastCycle = -1;
-
-      engineField.Get<int>("cycle", lastCycle, adios2::Mode::Sync);
-      if (lastCycle != last_cycle) {
-        engineField.EndStep();
-        CALI_MARK_ADIOS_CLOSE_BEGIN;
-        engineField.Close();  
-        CALI_MARK_ADIOS_CLOSE_END;
-
-        printf("last_cycle = %d\n", lastCycle);
-        printf("last_cycle = %d\n", last_cycle);
-        eprintf("last_cycle in restart file does not match the one in settings file");
-      } else {
-        if(MPIdata::get_rank() == 0) std::cout << "[*] Fields Restarting from cycle: " << lastCycle << std::endl;
-      }
-
-      // Bxn
-      engineField.Get<cudaCommonType>("Bx", (cudaCommonType*)Bxn.get_arr(), adios2::Mode::Deferred);
-      // Byn
-      engineField.Get<cudaCommonType>("By", (cudaCommonType*)Byn.get_arr(), adios2::Mode::Deferred);
-      // Bzn
-      engineField.Get<cudaCommonType>("Bz", (cudaCommonType*)Bzn.get_arr(), adios2::Mode::Deferred);
-      // Ex
-      engineField.Get<cudaCommonType>("Ex", (cudaCommonType*)Ex.get_arr(), adios2::Mode::Deferred);
-      // Ey
-      engineField.Get<cudaCommonType>("Ey", (cudaCommonType*)Ey.get_arr(), adios2::Mode::Deferred);
-      // Ez
-      engineField.Get<cudaCommonType>("Ez", (cudaCommonType*)Ez.get_arr(), adios2::Mode::Deferred);
-
-      // rhos
-      for (int i = 0; i < ns; i++)
-      {
-        engineField.Get<cudaCommonType>("rhosSpecies" + std::to_string(i), (cudaCommonType*)&((*rhons_)[i][0][0][0]), adios2::Mode::Deferred);
-      }
-
+    if (step < stepNum - 1) { // to read the last step
       engineField.EndStep();
-      break; // a must, or loop forever in next beginStep
+      continue;
     }
-    CALI_MARK_END("load_restart_data");
 
-    CALI_MARK_ADIOS_CLOSE_BEGIN;
-    engineField.Close();
-    CALI_MARK_ADIOS_CLOSE_END;
+    // last cycle
+    int lastCycle = -1;
+
+    engineField.Get<int>("cycle", lastCycle, adios2::Mode::Sync);
+    if (lastCycle != last_cycle) {
+      engineField.EndStep();
+      CALI_MARK_ADIOS_CLOSE_BEGIN;
+      engineField.Close();
+      CALI_MARK_ADIOS_CLOSE_END;
+
+      printf("last_cycle = %d\n", lastCycle);
+      printf("last_cycle = %d\n", last_cycle);
+      eprintf(
+          "last_cycle in restart file does not match the one in settings file");
+    } else {
+      if (MPIdata::get_rank() == 0)
+        std::cout << "[*] Fields Restarting from cycle: " << lastCycle
+                  << std::endl;
+    }
+
+    // Bxn
+    engineField.Get<cudaCommonType>("Bx", (cudaCommonType *)Bxn.get_arr(),
+                                    adios2::Mode::Deferred);
+    // Byn
+    engineField.Get<cudaCommonType>("By", (cudaCommonType *)Byn.get_arr(),
+                                    adios2::Mode::Deferred);
+    // Bzn
+    engineField.Get<cudaCommonType>("Bz", (cudaCommonType *)Bzn.get_arr(),
+                                    adios2::Mode::Deferred);
+    // Ex
+    engineField.Get<cudaCommonType>("Ex", (cudaCommonType *)Ex.get_arr(),
+                                    adios2::Mode::Deferred);
+    // Ey
+    engineField.Get<cudaCommonType>("Ey", (cudaCommonType *)Ey.get_arr(),
+                                    adios2::Mode::Deferred);
+    // Ez
+    engineField.Get<cudaCommonType>("Ez", (cudaCommonType *)Ez.get_arr(),
+                                    adios2::Mode::Deferred);
+
+    // rhos
+    for (int i = 0; i < ns; i++) {
+      engineField.Get<cudaCommonType>(
+          "rhosSpecies" + std::to_string(i),
+          (cudaCommonType *)&((*rhons_)[i][0][0][0]), adios2::Mode::Deferred);
+    }
+
+    engineField.EndStep();
+    break; // a must, or loop forever in next beginStep
+  }
+  CALI_MARK_END("load_restart_data");
+
+  CALI_MARK_ADIOS_CLOSE_BEGIN;
+  engineField.Close();
+  CALI_MARK_ADIOS_CLOSE_END;
 
 #endif
 }
@@ -957,211 +1050,223 @@ void Collective::read_field_restart(// real field read from restart file
 // extracted from Particles3Dcomm.cpp
 //
 void Collective::read_particles_restart(
-    const VCtopology3D* vct,
-    int species_number,
-    vector_double& u,
-    vector_double& v,
-    vector_double& w,
-    vector_double& q,
-    vector_double& x,
-    vector_double& y,
-    vector_double& z,
-    vector_double& t)const
-{ // real particles read from restart file
+    const VCtopology3D *vct, int species_number, vector_double &u,
+    vector_double &v, vector_double &w, vector_double &q, vector_double &x,
+    vector_double &y, vector_double &z,
+    vector_double &t) const { // real particles read from restart file
   CALI_CXX_MARK_FUNCTION;
 
 #ifndef USE_ADIOS2
   eprintf("Require ADIOS2 to read from restart file.");
 #else
 
-    if (vct->getCartesian_rank() == 0)
-    {
-      printf("LOADING PARTICLE FROM RESTART FILE in %s/restart.bp\n",getRestartDirName().c_str());
-    }
+  if (vct->getCartesian_rank() == 0) {
+    printf("LOADING PARTICLE FROM RESTART FILE in %s/restart.bp\n",
+           getRestartDirName().c_str());
+  }
 
-    stringstream ss;
-    ss << vct->getCartesian_rank();
-    string name_file = getRestartDirName() + "/restart_" + ss.str() + ".bp";
+  stringstream ss;
+  ss << vct->getCartesian_rank();
+  string name_file = getRestartDirName() + "/restart_" + ss.str() + ".bp";
 
-    adios2::ADIOS adios;
-    adios2::IO ioParticle;
-    adios2::Engine engineParticle;
-    // open BP file
-    ioParticle = adios.DeclareIO("Particles");
-    ioParticle.SetEngine("BP5");
-    CALI_MARK_ADIOS_OPEN_BEGIN;
-    engineParticle = ioParticle.Open(name_file, adios2::Mode::Read);
-    CALI_MARK_ADIOS_OPEN_END;
-    auto stepNum = engineParticle.Steps();
-    CALI_MARK_BEGIN("load_restart_data");
-    for(unsigned int step = 0; engineParticle.BeginStep() == adios2::StepStatus::OK; ++step) {
+  adios2::ADIOS adios;
+  adios2::IO ioParticle;
+  adios2::Engine engineParticle;
+  // open BP file
+  ioParticle = adios.DeclareIO("Particles");
+  ioParticle.SetEngine("BP5");
+  CALI_MARK_ADIOS_OPEN_BEGIN;
+  engineParticle = ioParticle.Open(name_file, adios2::Mode::Read);
+  CALI_MARK_ADIOS_OPEN_END;
+  auto stepNum = engineParticle.Steps();
+  CALI_MARK_BEGIN("load_restart_data");
+  for (unsigned int step = 0;
+       engineParticle.BeginStep() == adios2::StepStatus::OK; ++step) {
 
-      if (step < stepNum-1) {// to read the last step
-        engineParticle.EndStep();
-        continue; 
-      }
-
-      // last cycle
-      int lastCycle = -1;
-
-      engineParticle.Get<int>("cycle", lastCycle, adios2::Mode::Sync);
-      if (lastCycle != last_cycle) {
-        printf("last_cycle = %d\n", lastCycle);
-        printf("last_cycle = %d\n", last_cycle);
-        eprintf("last_cycle in restart file does not match the one in settings file");
-      } else {
-        if(MPIdata::get_rank() == 0)std::cout << "[*] Particle Restarting from cycle: " << lastCycle << std::endl;
-      }
-
-      // reserve first
-      // read nop
-      int nop = 0;
-      auto varX = ioParticle.InquireVariable<cudaCommonType>("part" + std::to_string(species_number) + "PositionX");
-      nop = varX.Shape()[0];
-      // std::cout << "[*] Particle Restarting Species" << species_number << "nop = " << nop << std::endl;
-
-      const int padded_nop = roundup_to_multiple(nop,DVECWIDTH);
-      u.reserve(padded_nop);
-      v.reserve(padded_nop);
-      w.reserve(padded_nop);
-      q.reserve(padded_nop);
-      x.reserve(padded_nop);
-      y.reserve(padded_nop);
-      z.reserve(padded_nop);
-      t.reserve(padded_nop);
-      //
-      // define size of particle data
-      //
-      u.resize(nop);
-      v.resize(nop);
-      w.resize(nop);
-      q.resize(nop);
-      x.resize(nop);
-      y.resize(nop);
-      z.resize(nop);
-      t.resize(nop);
-
-
-      // particles
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "VelocityU", &u[0], adios2::Mode::Deferred);
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "VelocityV", &v[0], adios2::Mode::Deferred);
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "VelocityW", &w[0], adios2::Mode::Deferred);
-
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "charge", &q[0], adios2::Mode::Deferred);
-
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "PositionX", &x[0], adios2::Mode::Deferred);
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "PositionY", &y[0], adios2::Mode::Deferred);
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "PositionZ", &z[0], adios2::Mode::Deferred);
-
-      engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) + "ID", &t[0], adios2::Mode::Deferred);
-
+    if (step < stepNum - 1) { // to read the last step
       engineParticle.EndStep();
-      break; // a must, or loop forever in next beginStep
+      continue;
     }
-    CALI_MARK_BEGIN("load_restart_data");
-    CALI_MARK_ADIOS_CLOSE_BEGIN;
-    engineParticle.Close();
-    CALI_MARK_ADIOS_CLOSE_END;
+
+    // last cycle
+    int lastCycle = -1;
+
+    engineParticle.Get<int>("cycle", lastCycle, adios2::Mode::Sync);
+    if (lastCycle != last_cycle) {
+      printf("last_cycle = %d\n", lastCycle);
+      printf("last_cycle = %d\n", last_cycle);
+      eprintf(
+          "last_cycle in restart file does not match the one in settings file");
+    } else {
+      if (MPIdata::get_rank() == 0)
+        std::cout << "[*] Particle Restarting from cycle: " << lastCycle
+                  << std::endl;
+    }
+
+    // reserve first
+    // read nop
+    int nop = 0;
+    auto varX = ioParticle.InquireVariable<cudaCommonType>(
+        "part" + std::to_string(species_number) + "PositionX");
+    nop = varX.Shape()[0];
+    // std::cout << "[*] Particle Restarting Species" << species_number << "nop
+    // = " << nop << std::endl;
+
+    const int padded_nop = roundup_to_multiple(nop, DVECWIDTH);
+    u.reserve(padded_nop);
+    v.reserve(padded_nop);
+    w.reserve(padded_nop);
+    q.reserve(padded_nop);
+    x.reserve(padded_nop);
+    y.reserve(padded_nop);
+    z.reserve(padded_nop);
+    t.reserve(padded_nop);
+    //
+    // define size of particle data
+    //
+    u.resize(nop);
+    v.resize(nop);
+    w.resize(nop);
+    q.resize(nop);
+    x.resize(nop);
+    y.resize(nop);
+    z.resize(nop);
+    t.resize(nop);
+
+    // particles
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "VelocityU",
+                                       &u[0], adios2::Mode::Deferred);
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "VelocityV",
+                                       &v[0], adios2::Mode::Deferred);
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "VelocityW",
+                                       &w[0], adios2::Mode::Deferred);
+
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "charge",
+                                       &q[0], adios2::Mode::Deferred);
+
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "PositionX",
+                                       &x[0], adios2::Mode::Deferred);
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "PositionY",
+                                       &y[0], adios2::Mode::Deferred);
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "PositionZ",
+                                       &z[0], adios2::Mode::Deferred);
+
+    engineParticle.Get<cudaCommonType>("part" + std::to_string(species_number) +
+                                           "ID",
+                                       &t[0], adios2::Mode::Deferred);
+
+    engineParticle.EndStep();
+    break; // a must, or loop forever in next beginStep
+  }
+  CALI_MARK_BEGIN("load_restart_data");
+  CALI_MARK_ADIOS_CLOSE_BEGIN;
+  engineParticle.Close();
+  CALI_MARK_ADIOS_CLOSE_END;
 
 #endif
-
-
 }
-
-
 
 /*! constructor */
 Collective::Collective(int argc, char **argv) {
   if (argc < 2) {
     inputfile = "inputfile";
     RESTART1 = false;
-  }
-  else if (argc < 3) {
+  } else if (argc < 3) {
     inputfile = argv[1];
     RESTART1 = false;
-  }
-  else {
+  } else {
     if (strcmp(argv[1], "restart") == 0) {
       inputfile = argv[2];
       RESTART1 = true;
-    }
-    else if (strcmp(argv[2], "restart") == 0) {
+    } else if (strcmp(argv[2], "restart") == 0) {
       inputfile = argv[1];
       RESTART1 = true;
-    }
-    else {
-      cout << "Error: syntax error in mpirun arguments. Did you mean to 'restart' ?" << endl;
+    } else {
+      cout << "Error: syntax error in mpirun arguments. Did you mean to "
+              "'restart' ?"
+           << endl;
       return;
     }
 
-    if(MPIdata::get_rank() == 0)std::cout << "Restarting..." << endl;
+    if (MPIdata::get_rank() == 0)
+      std::cout << "Restarting..." << endl;
   }
   ReadInput(inputfile);
   init_derived_parameters();
 }
 
-void Collective::init_derived_parameters()
-{
+void Collective::init_derived_parameters() {
   /*! fourpi = 4 greek pi */
   fourpi = 16.0 * atan(1.0);
   /*! dx = space step - X direction */
-  dx = Lx / (double) nxc;
+  dx = Lx / (double)nxc;
   /*! dy = space step - Y direction */
-  dy = Ly / (double) nyc;
+  dy = Ly / (double)nyc;
   /*! dz = space step - Z direction */
-  dz = Lz / (double) nzc;
+  dz = Lz / (double)nzc;
   /*! npcel = number of particles per cell */
-  npcel = std::make_unique<int[]>(ns+nstestpart);
+  npcel = std::make_unique<int[]>(ns + nstestpart);
   /*! np = number of particles of different species */
-  //np = new int[ns];
+  // np = new int[ns];
   /*! npMax = maximum number of particles of different species */
-  //npMax = new int[ns];
+  // npMax = new int[ns];
 
   /* quantities per process */
 
   // check that procs divides grid
   // (this restriction should be removed).
   //
-  if(0==MPIdata::get_rank())
-  {
+  if (0 == MPIdata::get_rank()) {
     fflush(stdout);
     bool xerror = false;
     bool yerror = false;
     bool zerror = false;
-    if(nxc % XLEN) xerror=true;
-    if(nyc % YLEN) yerror=true;
-    if(nzc % ZLEN) zerror=true;
-    if(xerror) warning_printf("XLEN=%d does not divide nxc=%d\n", XLEN,nxc);
-    if(yerror) warning_printf("YLEN=%d does not divide nyc=%d\n", YLEN,nyc);
-    if(zerror) warning_printf("ZLEN=%d does not divide nzc=%d\n", ZLEN,nzc);
+    if (nxc % XLEN)
+      xerror = true;
+    if (nyc % YLEN)
+      yerror = true;
+    if (nzc % ZLEN)
+      zerror = true;
+    if (xerror)
+      warning_printf("XLEN=%d does not divide nxc=%d\n", XLEN, nxc);
+    if (yerror)
+      warning_printf("YLEN=%d does not divide nyc=%d\n", YLEN, nyc);
+    if (zerror)
+      warning_printf("ZLEN=%d does not divide nzc=%d\n", ZLEN, nzc);
     fflush(stdout);
-    bool error = (xerror||yerror||zerror);
+    bool error = (xerror || yerror || zerror);
     // Comment out this check if your postprocessing code does not
     // require the field output subarrays to be the same size.
     // Alternatively, you could modify the output routine to pad
     // with zeros...
-    //if(error)
+    // if(error)
     //{
     //  eprintf("For WriteMethod=default processor dimensions "
     //          "must divide mesh cell dimensions");
     //}
   }
 
-  int num_cells_r = nxc*nyc*nzc;
-  //num_procs = XLEN*YLEN*ZLEN;
-  //ncells_rs = nxc_rs*nyc_rs*nzc_rs;
+  int num_cells_r = nxc * nyc * nzc;
+  // num_procs = XLEN*YLEN*ZLEN;
+  // ncells_rs = nxc_rs*nyc_rs*nzc_rs;
 
-  for (int i = 0; i < (ns+nstestpart); i++)
-  {
+  for (int i = 0; i < (ns + nstestpart); i++) {
     npcel[i] = npcelx[i] * npcely[i] * npcelz[i];
-    //np[i] = npcel[i] * num_cells;
-    //nop_rs[i] = npcel[i] * ncells_rs;
-    //maxnop_rs[i] = NpMaxNpRatio * nop_rs[i];
-    // INT_MAX is about 2 billion, surely enough
-    // to index the particles in a single MPI process:
-    //assert_le(NpMaxNpRatio * npcel[i] * ncells_proper_per_proc , double(INT_MAX));
-    //double npMaxi = (NpMaxNpRatio * np[i]);
-    //npMax[i] = (int) npMaxi;
+    // np[i] = npcel[i] * num_cells;
+    // nop_rs[i] = npcel[i] * ncells_rs;
+    // maxnop_rs[i] = NpMaxNpRatio * nop_rs[i];
+    //  INT_MAX is about 2 billion, surely enough
+    //  to index the particles in a single MPI process:
+    // assert_le(NpMaxNpRatio * npcel[i] * ncells_proper_per_proc ,
+    // double(INT_MAX)); double npMaxi = (NpMaxNpRatio * np[i]); npMax[i] =
+    // (int) npMaxi;
   }
 }
 
@@ -1207,18 +1312,19 @@ void Collective::Print() {
   cout << endl;
   for (int is = 0; is < ns; is++) {
     if (uth[is] * dt / dx > .1)
-      cout << "OK u_th*dt/dx (species " << is << ") = " << uth[is] * dt / dx << " > .1" << endl;
+      cout << "OK u_th*dt/dx (species " << is << ") = " << uth[is] * dt / dx
+           << " > .1" << endl;
     else
-      cout << "WARNING. u_th*dt/dx (species " << is << ") = " << uth[is] * dt / dx << " < .1" << endl;
+      cout << "WARNING. u_th*dt/dx (species " << is
+           << ") = " << uth[is] * dt / dx << " < .1" << endl;
 
     if (vth[is] * dt / dy > .1)
-      cout << "OK v_th*dt/dy (species " << is << ") = " << vth[is] * dt / dy << " > .1" << endl;
+      cout << "OK v_th*dt/dy (species " << is << ") = " << vth[is] * dt / dy
+           << " > .1" << endl;
     else
-      cout << "WARNING. v_th*dt/dy (species " << is << ") = " << vth[is] * dt / dy << " < .1"  << endl;
-
+      cout << "WARNING. v_th*dt/dy (species " << is
+           << ") = " << vth[is] * dt / dy << " < .1" << endl;
   }
-
-
 }
 /*! Print Simulation Parameters */
 void Collective::save() {
@@ -1243,9 +1349,9 @@ void Collective::save() {
   my_file << "Time step                = " << dt << endl;
   my_file << "Number of cycles         = " << ncycles << endl;
   my_file << "---------------------------" << endl;
-  for (int is = 0; is < ns; is++){
+  for (int is = 0; is < ns; is++) {
     my_file << "rho init species   " << is << " = " << rhoINIT[is] << endl;
-    my_file << "rho inject species " << is << " = " << rhoINJECT[is]  << endl;
+    my_file << "rho inject species " << is << " = " << rhoINJECT[is] << endl;
   }
   my_file << "current sheet thickness  = " << delta << endl;
   my_file << "B0x                      = " << B0x << endl;
@@ -1253,7 +1359,7 @@ void Collective::save() {
   my_file << "B0z                      = " << B0z << endl;
   my_file << "---------------------------" << endl;
   my_file << "Smooth                   = " << Smooth << endl;
-  my_file << "SmoothNiter              = " << SmoothNiter<< endl;
+  my_file << "SmoothNiter              = " << SmoothNiter << endl;
   my_file << "GMRES error tolerance    = " << GMREStol << endl;
   my_file << "CG error tolerance       = " << CGtol << endl;
   my_file << "Mover error tolerance    = " << NiterMover << endl;
@@ -1262,6 +1368,4 @@ void Collective::save() {
   my_file << "Restart saved in: " << RestartDirName << endl;
   my_file << "---------------------" << endl;
   my_file.close();
-
 }
-
