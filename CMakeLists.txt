@@ -45,6 +45,7 @@ option(USE_HDF5 "Use HDF5 library" ON)
 option(USE_ADIOS2 "Use ADIOS2 library" ON)
 
 option(HIP_ON "Use HIP" OFF) # Set it to OFF if you want to use CUDA, ON for HIP
+option(USE_CALIPER "Use Caliper performance monitoring" OFF)
 
 
 option(BENCH_MARK "Print tasks time" OFF)
@@ -111,6 +112,11 @@ if (USE_HDF5)
   endif()
 endif()
 
+if (USE_CALIPER)
+  find_package(caliper REQUIRED)
+  add_compile_definitions("HAVE_CALIPER=1")
+endif()
+
 # Find MPI and OpenMP
 find_package(MPI REQUIRED COMPONENTS CXX)
 if(USE_OPENMP)
@@ -162,8 +168,8 @@ if(HIP_ON)
   message(STATUS "Using HIP environment.")
   set(DEVICE_LANGUAGE HIP)
   set(DEVICE_COMPILER hipcc)
-  target_link_libraries(iPIC3Dlib PRIVATE hip::device)
-  target_link_libraries(iPIC3Dlib PRIVATE hip::host)
+  target_link_libraries(iPIC3Dlib PUBLIC hip::device)
+  target_link_libraries(iPIC3Dlib PUBLIC hip::host)
 
   target_compile_options(iPIC3Dlib PUBLIC -fgpu-rdc)
   target_link_options(iPIC3Dlib PUBLIC  -fgpu-rdc --hip-link)
@@ -218,6 +224,10 @@ endif()
 
 if (USE_ADIOS2)
     list(APPEND linkLibraries adios2::cxx11_mpi)
+endif()
+
+if (USE_CALIPER)
+  list(APPEND linkLibraries caliper)
 endif()
 
 target_link_libraries(
