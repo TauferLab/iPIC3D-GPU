@@ -114,6 +114,7 @@ endif()
 
 if (USE_CALIPER)
   find_package(caliper REQUIRED)
+  find_package(adiak REQUIRED)
   add_compile_definitions("HAVE_CALIPER=1")
 endif()
 
@@ -228,6 +229,7 @@ endif()
 
 if (USE_CALIPER)
   list(APPEND linkLibraries caliper)
+  list(APPEND linkLibraries adiak::adiak)
 endif()
 
 target_link_libraries(
