@@ -199,6 +199,7 @@ namespace iPic3D {
     //bool verbose;
     string SaveDirName;
     string RestartDirName;
+    string GMMDirName;
     string cqsat;
     string cq;
     string ds;

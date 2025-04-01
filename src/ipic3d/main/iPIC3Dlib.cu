@@ -135,6 +135,7 @@ int c_Solver::Init(int argc, char **argv) {
   restart_cycle = col->getRestartOutputCycle();
   SaveDirName = col->getSaveDirName();
   RestartDirName = col->getRestartDirName();
+  GMMDirName = col->getGMMDirName();
   restart_status = col->getRestart_status();
   ns = col->getNs();            // get the number of particle species involved in simulation
   first_cycle = col->getLast_cycle() + 1; // get the last cycle from the restart

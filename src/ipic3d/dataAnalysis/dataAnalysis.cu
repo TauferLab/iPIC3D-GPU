@@ -37,6 +37,8 @@ using weightType = velocityHistogram::histogramTypeOut;
 class dataAnalysisPipelineImpl {
 
 private:
+  string gmm_output_dir;  
+
   int ns;
   int deviceOnNode;
   // pointers to objects in KCode
@@ -65,6 +67,7 @@ private:
 
 public:
   dataAnalysisPipelineImpl(c_Solver &KCode) {
+    gmm_output_dir = KCode.GMMDirName;
     ns = KCode.ns;
     deviceOnNode = KCode.cudaDeviceOnNode;
     streams = KCode.streams;
@@ -82,7 +85,7 @@ public:
 
       if constexpr (GMM_ENABLE) { // GMM
         GMMSubDomainOutputPath =
-            GMM_OUTPUT_DIR + "subDomain" + std::to_string(KCode.myrank) + "/";
+            gmm_output_dir + "subDomain" + std::to_string(KCode.myrank) + "/";
         gmmArray = new cudaGMMWeight::GMM<GMMType, GMM_DATA_DIM, weightType>[3];
 
         if constexpr (GMM_OUTPUT) {
@@ -91,7 +94,7 @@ public:
 #ifdef USE_ADIOS2
           adios = adios2::ADIOS(MPIdata::get_PicGlobalComm());
           ioGMM = adios.DeclareIO("GMM");
-          engineGMM = ioGMM.Open(GMM_OUTPUT_DIR + "subDomain" +
+          engineGMM = ioGMM.Open(gmm_output_dir + "subDomain" +
                                      std::to_string(KCode.myrank) + "/" +
                                      "GMMResult.bp",
                                  adios2::Mode::Write, MPI_COMM_SELF);
@@ -528,7 +531,7 @@ void dataAnalysisPipeline::createOutputDirectory(
 
   if constexpr (GMM_ENABLE && GMM_OUTPUT) {
     auto GMMSubDomainOutputPath =
-        GMM_OUTPUT_DIR + "subDomain" + std::to_string(myrank) + "/";
+        gmm_output_dir + "subDomain" + std::to_string(myrank) + "/";
     if (0 != checkOutputFolder(GMMSubDomainOutputPath)) {
       throw std::runtime_error(
           "[!]Error: Can not create output folder for velocity GMM");

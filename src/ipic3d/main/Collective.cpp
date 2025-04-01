@@ -108,6 +108,7 @@ void Collective::ReadInput(string inputfile) {
 
     SaveDirName = config.read<string>("SaveDirName", "data");
     RestartDirName = config.read<string>("RestartDirName", "data");
+    GMMDirName = config.read<string>("GMMDirName", "./velocityGMM");
     ns = config.read<int>("ns");
     nstestpart = config.read<int>("nsTestPart", 0);
     NpMaxNpRatio = config.read<double>("NpMaxNpRatio", 1.5);
