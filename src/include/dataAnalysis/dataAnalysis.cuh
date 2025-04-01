@@ -23,7 +23,7 @@ public:
     dataAnalysisPipeline(iPic3D::c_Solver& KCode);
 
     // create the output directory
-    static void createOutputDirectory(int myrank, int ns, VirtualTopology3D* vct);
+    static void createOutputDirectory(int myrank, int ns, VirtualTopology3D* vct, const string& gmm_output_dir);
 
     // called in the main loop
     void startAnalysis(int cycle);

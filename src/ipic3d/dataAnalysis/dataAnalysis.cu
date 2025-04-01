@@ -470,7 +470,8 @@ void dataAnalysisPipelineImpl::outputGMMADIOS2() {
  */
 void dataAnalysisPipeline::createOutputDirectory(
     int myrank, int ns,
-    VirtualTopology3D *vct) { // output path for data analysis
+    VirtualTopology3D *vct,
+    const string& gmm_output_dir) { // output path for data analysis
   if constexpr (DATA_ANALYSIS_ENABLED == false) {
     return;
   }
@@ -532,7 +533,7 @@ void dataAnalysisPipeline::createOutputDirectory(
 
   if constexpr (GMM_ENABLE && GMM_OUTPUT) {
     auto GMMSubDomainOutputPath =
-        impl->gmm_output_dir + "subDomain" + std::to_string(myrank) + "/";
+        gmm_output_dir + "subDomain" + std::to_string(myrank) + "/";
     if (0 != checkOutputFolder(GMMSubDomainOutputPath)) {
       throw std::runtime_error(
           "[!]Error: Can not create output folder for velocity GMM");

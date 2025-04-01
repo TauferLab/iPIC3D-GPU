@@ -465,7 +465,7 @@ int c_Solver::initCUDA(){
   cudaErrChk(cudaEventCreateWithFlags(&eventOutputCopy, cudaEventDisableTiming|cudaEventBlockingSync));
 
 
-  dataAnalysis::dataAnalysisPipeline::createOutputDirectory(myrank, ns, vct);
+  dataAnalysis::dataAnalysisPipeline::createOutputDirectory(myrank, ns, vct, GMMDirName);
 
   cudaErrChk(cudaDeviceSynchronize());
 
