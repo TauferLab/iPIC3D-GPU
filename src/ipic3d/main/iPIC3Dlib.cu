@@ -629,6 +629,7 @@ void c_Solver::CalculateMoments(bool isInit) {
   }
 #else
 
+  CALI_MARK_BEGIN("calculate_moments_gpu");
   // sum moments
   if(isInit){
     auto gridSize = grid->getNXN() * grid->getNYN() * grid->getNZN();
@@ -653,6 +654,7 @@ void c_Solver::CalculateMoments(bool isInit) {
   }
   // synchronize
   cudaErrChk(cudaDeviceSynchronize());
+  CALI_MARK_END("calculate_moments_gpu");
   
 #endif
 
