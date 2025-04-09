@@ -917,6 +917,7 @@ bool c_Solver::ParticlesMover()
   /* --------------------------------------- */
   /* Test Particles mover 					 */
   /* --------------------------------------- */
+  CALI_MARK_BEGIN("move_test_particles");
   for (int i = 0; i < nstestpart; i++)  // move each species
   {
 	switch(Parameters::get_MOVER_TYPE())
@@ -948,6 +949,7 @@ bool c_Solver::ParticlesMover()
   {
 	  testpart[i].recommunicate_particles_until_done(1);
   }
+  CALI_MARK_END("move_test_particles");
 
   return (false);
 }
