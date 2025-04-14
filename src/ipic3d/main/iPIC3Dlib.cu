@@ -1015,6 +1015,7 @@ void c_Solver::WriteRestart(int cycle)
 {
 #ifndef NO_HDF5
   if (restart_cycle>0 && cycle%restart_cycle==0){
+    MPI_Barrier(MPIdata::get_PicGlobalComm());
 
     cudaErrChk(cudaEventSynchronize(eventOutputCopy));
 
